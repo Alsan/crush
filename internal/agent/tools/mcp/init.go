@@ -572,12 +572,23 @@ func connectAndRegister(ctx context.Context, cfg *config.ConfigStore, name strin
 		return nil, context.Canceled
 	}
 
+	resources, err := getResources(ctx, session)
+	if err != nil {
+		slog.Error("Error listing resources", "error", err)
+		updateState(name, StateError, err, nil, Counts{})
+		session.Close()
+		return err
+	}
+
+	toolCount := updateTools(cfg, name, tools)
 	updatePrompts(name, prompts)
+	resourceCount := updateResources(name, resources)
 	sessions.Set(name, session)
 
 	updateState(name, StateConnected, nil, session, Counts{
-		Tools:   toolCount,
-		Prompts: len(prompts),
+		Tools:     toolCount,
+		Prompts:   len(prompts),
+		Resources: resourceCount,
 	}, withConfig(m))
 
 	return session, nil
