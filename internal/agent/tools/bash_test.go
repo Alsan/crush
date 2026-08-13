@@ -39,6 +39,12 @@ func (m *mockBashPermissionService) SkipRequests() bool {
 	return false
 }
 
+func (m *mockBashPermissionService) LocalSkipRequests() bool {
+	return false
+}
+
+func (m *mockBashPermissionService) SetLocalSkipRequests(bool) {}
+
 func (m *mockBashPermissionService) SubscribeNotifications(ctx context.Context) <-chan pubsub.Event[permission.PermissionNotification] {
 	return make(<-chan pubsub.Event[permission.PermissionNotification])
 }
@@ -105,6 +111,12 @@ func (m *recordingPermissionService) GrantPersistent(req permission.PermissionRe
 func (m *recordingPermissionService) AutoApproveSession(sessionID string) {}
 
 func (m *recordingPermissionService) SetSkipRequests(skip bool) {}
+
+func (m *recordingPermissionService) LocalSkipRequests() bool {
+	return false
+}
+
+func (m *recordingPermissionService) SetLocalSkipRequests(bool) {}
 
 func (m *recordingPermissionService) SkipRequests() bool {
 	return false

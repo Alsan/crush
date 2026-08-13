@@ -1212,6 +1212,12 @@ func (c *coordinator) buildTools(ctx context.Context, agent config.Agent, isSubA
 		tools.NewTodosTool(c.sessions),
 		tools.NewViewTool(c.lspManager, c.permissions, c.filetracker, c.skillTracker, c.cfg.WorkingDir(), c.cfg.Config().Options.SkillsPaths...),
 		tools.NewWriteTool(c.lspManager, c.permissions, c.history, c.filetracker, c.cfg.WorkingDir()),
+		tools.NewMemSaveTool(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory),
+		tools.NewMemSearchTool(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory),
+		tools.NewMemContextTool(c.cfg.WorkingDir(), c.cfg.Config().Options.DataDirectory),
+		tools.NewGraphTool(c.cfg.WorkingDir()),
+		tools.NewQueryTool(c.cfg.WorkingDir()),
+		tools.NewReviewTool(c.cfg.WorkingDir()),
 	)
 
 	// Question tool is interactive-only and not available to sub-agents.
