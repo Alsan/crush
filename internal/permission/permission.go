@@ -205,15 +205,19 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	// Local yolo mode: auto-approve requests whose target path resolves
 	// inside the working directory subtree. Pathless requests (e.g. bash),
 	// requests outside the subtree, and requests under an excluded path
-	// fall through to the normal flow. A granted notification is published
-	// so the UI and audit subscribers see the outcome, matching the other
-	// auto-approval paths.
-	if s.localSkip.Load() && s.withinSubtree(opts.Path) && !s.withinExcluded(opts.Path) {
-		s.notificationBroker.Publish(pubsub.CreatedEvent, PermissionNotification{
-			ToolCallID: opts.ToolCallID,
-			Granted:    true,
-		})
-		return true, nil
+	// fall through to the normal flow. The absolute path is resolved once
+	// and shared by the subtree and exclusion checks so the (syscall-heavy)
+	// symlink walk does not run twice per request. A granted notification
+	// is published so the UI and audit subscribers see the outcome,
+	// matching the other auto-approval paths.
+	if s.localSkip.Load() {
+		if abs := s.resolvePath(opts.Path); abs != "" && s.withinSubtree(abs) && !s.withinExcluded(abs) {
+			s.notificationBroker.Publish(pubsub.CreatedEvent, PermissionNotification{
+				ToolCallID: opts.ToolCallID,
+				Granted:    true,
+			})
+			return true, nil
+		}
 	}
 
 	// A PreToolUse hook that returned decision=allow stamps the context
@@ -330,20 +334,31 @@ func (s *permissionService) LocalSkipRequests() bool {
 	return s.localSkip.Load()
 }
 
-// withinSubtree reports whether path refers to a location at or under the
-// service's working directory. It resolves symlinks along the deepest
-// existing ancestor so a target that does not exist yet (e.g. a file about
-// to be created) is still checked against the real directory hierarchy, and
-// it rejects paths that escape the subtree via ".." or symlinks.
-func (s *permissionService) withinSubtree(path string) bool {
+// resolvePath returns the absolute, symlink-resolved form of path, or ""
+// when the path is empty or cannot be resolved. Callers resolve once and pass
+// the result to withinSubtree/withinExcluded so the syscall-heavy symlink
+// walk runs at most once per request.
+func (s *permissionService) resolvePath(path string) string {
 	if path == "" {
-		return false
+		return ""
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
+		return ""
+	}
+	return resolveExisting(abs)
+}
+
+// withinSubtree reports whether path (already absolute and symlink-resolved
+// via resolvePath) refers to a location at or under the service's working
+// directory. Symlinks are resolved along the deepest existing ancestor so a
+// target that does not exist yet (e.g. a file about to be created) is still
+// checked against the real directory hierarchy, and paths that escape the
+// subtree via ".." are rejected.
+func (s *permissionService) withinSubtree(abs string) bool {
+	if abs == "" {
 		return false
 	}
-	abs = resolveExisting(abs)
 	rel, err := filepath.Rel(s.workingDir, abs)
 	if err != nil {
 		return false
@@ -357,18 +372,14 @@ func (s *permissionService) withinSubtree(path string) bool {
 	return true
 }
 
-// withinExcluded reports whether path resolves at or under one of the
-// configured exclusion roots. Symlink resolution is applied the same way as
-// withinSubtree so an excluded location cannot be aliased past the check.
-func (s *permissionService) withinExcluded(path string) bool {
-	if path == "" || len(s.excludedPaths) == 0 {
+// withinExcluded reports whether path (already absolute and symlink-resolved
+// via resolvePath) resolves at or under one of the configured exclusion
+// roots. Symlink resolution is applied the same way as withinSubtree so an
+// excluded location cannot be aliased past the check.
+func (s *permissionService) withinExcluded(abs string) bool {
+	if abs == "" || len(s.excludedPaths) == 0 {
 		return false
 	}
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
-	abs = resolveExisting(abs)
 	for _, excluded := range s.excludedPaths {
 		rel, err := filepath.Rel(excluded, abs)
 		if err != nil {
