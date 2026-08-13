@@ -29,9 +29,8 @@ func NewMemSearchTool(workingDir, dataDir string) fantasy.AgentTool {
 		func(ctx context.Context, params MemSearchParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			h, err := openMemStore(dataDir)
 			if err != nil {
-				return fantasy.NewTextResponse("failed to open engram store: " + err.Error()), nil
+				return fantasy.NewTextErrorResponse("failed to open engram store: " + err.Error()), nil
 			}
-			defer h.Close()
 
 			results, err := h.Search(params.Query, mem.SearchOptions{
 				Type:      params.Type,
@@ -40,7 +39,7 @@ func NewMemSearchTool(workingDir, dataDir string) fantasy.AgentTool {
 				Limit:     params.Limit,
 			})
 			if err != nil {
-				return fantasy.NewTextResponse("search failed: " + err.Error()), nil
+				return fantasy.NewTextErrorResponse("search failed: " + err.Error()), nil
 			}
 			if len(results) == 0 {
 				return fantasy.NewTextResponse("no memories found"), nil

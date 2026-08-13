@@ -26,9 +26,8 @@ func NewMemContextTool(workingDir, dataDir string) fantasy.AgentTool {
 		func(ctx context.Context, params MemContextParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			h, err := openMemStore(dataDir)
 			if err != nil {
-				return fantasy.NewTextResponse("failed to open engram store: " + err.Error()), nil
+				return fantasy.NewTextErrorResponse("failed to open engram store: " + err.Error()), nil
 			}
-			defer h.Close()
 
 			// RecentObservations filters by project when project is non-empty;
 			// use the working dir as the project so this surfaces the current
@@ -41,7 +40,7 @@ func NewMemContextTool(workingDir, dataDir string) fantasy.AgentTool {
 
 			obs, err := h.RecentObservations(project, params.Scope, params.Limit)
 			if err != nil {
-				return fantasy.NewTextResponse("context load failed: " + err.Error()), nil
+				return fantasy.NewTextErrorResponse("context load failed: " + err.Error()), nil
 			}
 			if len(obs) == 0 {
 				return fantasy.NewTextResponse("no memories found"), nil

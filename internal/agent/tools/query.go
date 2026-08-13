@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	_ "embed"
-	"fmt"
 
 	"charm.land/fantasy"
 )
@@ -28,15 +27,17 @@ func NewQueryTool(workingDir string) fantasy.AgentTool {
 			if root == "" {
 				root = workingDir
 			}
-			expr := fmt.Sprintf(`
+			// pattern/target/repo_root passed as argv (sys.argv[1..3]) so they
+			// cannot break out of the Python -c string.
+			expr := `
 import json, sys
 from better_code_review_graph.tools import query_graph
-r = query_graph(pattern=%q, target=%q, repo_root=%q)
+r = query_graph(pattern=sys.argv[1], target=sys.argv[2], repo_root=sys.argv[3])
 sys.stdout.write(json.dumps(r))
-`, params.Pattern, params.Target, root)
-			out, err := runBCRG(expr)
+`
+			out, err := runBCRG(ctx, expr, params.Pattern, params.Target, root)
 			if err != nil {
-				return fantasy.NewTextResponse(out + "\n" + err.Error()), nil
+				return fantasy.NewTextErrorResponse(out + "\n" + err.Error()), nil
 			}
 			return fantasy.NewTextResponse(out), nil
 		},

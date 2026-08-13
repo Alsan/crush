@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	_ "embed"
-	"fmt"
 
 	"charm.land/fantasy"
 )
@@ -28,15 +27,17 @@ func NewReviewTool(workingDir string) fantasy.AgentTool {
 			if root == "" {
 				root = workingDir
 			}
-			expr := fmt.Sprintf(`
+			// repo_root/from_sha/to_sha passed as argv (sys.argv[1..3]) so they
+			// cannot break out of the Python -c string.
+			expr := `
 import json, sys
 from better_code_review_graph.tools import review_delta
-r = review_delta(repo_root=%q, from_sha=%q, to_sha=%q)
+r = review_delta(repo_root=sys.argv[1], from_sha=sys.argv[2], to_sha=sys.argv[3])
 sys.stdout.write(json.dumps(r))
-`, root, params.FromSHA, params.ToSHA)
-			out, err := runBCRG(expr)
+`
+			out, err := runBCRG(ctx, expr, root, params.FromSHA, params.ToSHA)
 			if err != nil {
-				return fantasy.NewTextResponse(out + "\n" + err.Error()), nil
+				return fantasy.NewTextErrorResponse(out + "\n" + err.Error()), nil
 			}
 			return fantasy.NewTextResponse(out), nil
 		},

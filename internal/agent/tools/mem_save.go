@@ -28,9 +28,8 @@ func NewMemSaveTool(workingDir, dataDir string) fantasy.AgentTool {
 		func(ctx context.Context, params MemSaveParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
 			h, err := openMemStore(dataDir)
 			if err != nil {
-				return fantasy.NewTextResponse("failed to open engram store: " + err.Error()), nil
+				return fantasy.NewTextErrorResponse("failed to open engram store: " + err.Error()), nil
 			}
-			defer h.Close()
 
 			id, err := h.SaveObservation(mem.AddObservationParams{
 				Type:      params.Type,
@@ -41,7 +40,7 @@ func NewMemSaveTool(workingDir, dataDir string) fantasy.AgentTool {
 				SessionID: "",
 			})
 			if err != nil {
-				return fantasy.NewTextResponse("failed to save memory: " + err.Error()), nil
+				return fantasy.NewTextErrorResponse("failed to save memory: " + err.Error()), nil
 			}
 			return fantasy.NewTextResponse("saved memory id " + strconv.FormatInt(id, 10)), nil
 		},

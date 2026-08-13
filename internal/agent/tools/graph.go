@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"strings"
 
 	"charm.land/fantasy"
@@ -33,15 +32,22 @@ func NewGraphTool(workingDir string) fantasy.AgentTool {
 			if base == "" {
 				base = "HEAD~1"
 			}
-			expr := fmt.Sprintf(`
+			// Repo root/base are passed as argv (sys.argv[1..3]) so a path
+			// containing quotes or newlines cannot break out of the Python -c
+			// string or inject code.
+			expr := `
 import json, sys
 from better_code_review_graph.tools import build_or_update_graph
-r = build_or_update_graph(full_rebuild=%t, repo_root=%q, base=%q)
+r = build_or_update_graph(full_rebuild=sys.argv[1] == "1", repo_root=sys.argv[2], base=sys.argv[3])
 sys.stdout.write(json.dumps(r))
-`, params.FullRebuild, root, base)
-			out, err := runBCRG(expr)
+`
+			full := "0"
+			if params.FullRebuild {
+				full = "1"
+			}
+			out, err := runBCRG(ctx, expr, full, root, base)
 			if err != nil {
-				return fantasy.NewTextResponse(out + "\n" + err.Error()), nil
+				return fantasy.NewTextErrorResponse(out + "\n" + err.Error()), nil
 			}
 			if strings.TrimSpace(out) == "" {
 				return fantasy.NewTextResponse("graph built (no output)"), nil
