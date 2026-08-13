@@ -79,13 +79,15 @@ type boundedWriter struct {
 }
 
 func (b *boundedWriter) Write(p []byte) (int, error) {
+	total := len(p)
 	remaining := b.limit - b.w.Len()
-	if remaining <= 0 {
-		return len(p), nil
+	if remaining > 0 {
+		if total > remaining {
+			p = p[:remaining]
+		}
+		_, _ = b.w.Write(p)
 	}
-	if len(p) > remaining {
-		p = p[:remaining]
-	}
-	n, _ := b.w.Write(p)
-	return n, nil
+	// Report the full original length as consumed so io.Copy never sees a
+	// short write; beyond the cap we simply drop data rather than erroring.
+	return total, nil
 }
