@@ -1218,6 +1218,7 @@ func (c *coordinator) buildTools(ctx context.Context, agent config.Agent, isSubA
 		tools.NewGraphTool(c.cfg.WorkingDir()),
 		tools.NewQueryTool(c.cfg.WorkingDir()),
 		tools.NewReviewTool(c.cfg.WorkingDir()),
+		tools.NewCodegraphTool(c.cfg.WorkingDir()),
 	)
 
 	// Question tool is interactive-only and not available to sub-agents.
