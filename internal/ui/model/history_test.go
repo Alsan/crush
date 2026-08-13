@@ -36,3 +36,37 @@ func TestHistoryBangCommandStripsPrefixWhileAlreadyInBangMode(t *testing.T) {
 	require.True(t, u.bangMode)
 	require.Equal(t, "echo two", u.textarea.Value())
 }
+
+// TestRecordPromptHistoryPrepends pins that a just-submitted prompt lands at
+// the newest history slot so up-arrow recalls it even before the async DB
+// write lands.
+func TestRecordPromptHistoryPrepends(t *testing.T) {
+	t.Parallel()
+
+	u := newTestUI()
+	u.promptHistory.messages = []string{"older"}
+
+	u.recordPromptHistory("latest")
+	require.Equal(t, []string{"latest", "older"}, u.promptHistory.messages)
+	require.Equal(t, -1, u.promptHistory.index, "recording must reset the cursor to the draft")
+}
+
+// TestRecordPromptHistorySkipsDuplicate pins that re-recording the current
+// newest prompt does not duplicate it.
+func TestRecordPromptHistorySkipsDuplicate(t *testing.T) {
+	t.Parallel()
+
+	u := newTestUI()
+	u.recordPromptHistory("same")
+	u.recordPromptHistory("same")
+	require.Equal(t, []string{"same"}, u.promptHistory.messages)
+}
+
+// TestRecordPromptHistoryIgnoresEmpty pins that an empty prompt is not added.
+func TestRecordPromptHistoryIgnoresEmpty(t *testing.T) {
+	t.Parallel()
+
+	u := newTestUI()
+	u.recordPromptHistory("")
+	require.Empty(t, u.promptHistory.messages)
+}

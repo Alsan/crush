@@ -183,6 +183,22 @@ func (m *UI) historyReset() {
 	m.promptHistory.draft = ""
 }
 
+// recordPromptHistory makes the just-submitted prompt immediately available
+// for history navigation, prepending it to the newest slot. The prompt is
+// persisted asynchronously on send, so a DB reload can race ahead and miss
+// the newest record; keeping it locally guarantees up-arrow recalls the last
+// message. A duplicate immediate head is skipped.
+func (m *UI) recordPromptHistory(prompt string) {
+	if prompt == "" {
+		return
+	}
+	if len(m.promptHistory.messages) > 0 && m.promptHistory.messages[0] == prompt {
+		return
+	}
+	m.promptHistory.messages = append([]string{prompt}, m.promptHistory.messages...)
+	m.promptHistory.index = -1
+}
+
 // isAtEditorStart returns true if we are at the 0 line and 0 col in the textarea.
 func (m *UI) isAtEditorStart() bool {
 	return m.textarea.Line() == 0 && m.textarea.LineInfo().ColumnOffset == 0
