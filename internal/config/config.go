@@ -930,6 +930,14 @@ func allToolNames() []string {
 		"read_mcp_resource",
 		"list_mcp_prompts",
 		"call_mcp_prompt",
+		"mem_save",
+		"mem_search",
+		"mem_context",
+		"graph",
+		"query",
+		"review",
+		"bcgraph",
+		"codegraph",
 	}
 }
 
