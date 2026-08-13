@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"charm.land/fantasy"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // CodegraphToolName exposes the native CodeGraph CLI knowledge-graph index.
@@ -44,9 +45,6 @@ func codegraphTimeout() time.Duration {
 // to keep memory bounded.
 func runCodegraph(ctx context.Context, args ...string) (string, error) {
 	bin := codegraphBin()
-	if bin == "" {
-		return "", errors.New("cannot resolve codegraph binary")
-	}
 	cmdCtx, cancel := context.WithTimeout(ctx, codegraphTimeout())
 	defer cancel()
 	cmd := exec.CommandContext(cmdCtx, bin, args...)
@@ -133,7 +131,11 @@ func NewCodegraphTool(workingDir string) fantasy.AgentTool {
 			params.Path = repo
 			args := buildCodegraphArgs(params.Op, params)
 			out, err := runCodegraph(ctx, args...)
+			out = ansi.Strip(out)
 			if err != nil {
+				if strings.Contains(strings.ToLower(out), "not initialized") {
+					return fantasy.NewTextErrorResponse("CodeGraph is not initialized in " + repo + "; run the codegraph tool with op=\"index\" first"), nil
+				}
 				return fantasy.NewTextErrorResponse(out + "\n" + err.Error()), nil
 			}
 			return fantasy.NewTextResponse(out), nil
