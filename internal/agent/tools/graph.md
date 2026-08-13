@@ -2,6 +2,9 @@
 
 Build or update the better-code-review-graph code knowledge graph for a repository.
 
+Run-to-completion is bounded by `CRUSH_BCRG_TIMEOUT` (seconds, default 300);
+a timed-out build is killed and reported as an error.
+
 ## Usage
 
 ```json
