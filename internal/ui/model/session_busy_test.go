@@ -416,10 +416,10 @@ func TestLocalYoloToggleSupersedesInFlightProbe(t *testing.T) {
 	require.True(t, m.busyFetchInFlight, "re-dispatched refresh must be in flight")
 }
 
-// TestSendMessageSetsOptimisticBusy pins the esc-after-enter behavior:
+// TestSendMessageSetsOptimisticBusy pins the cancel-after-enter behavior:
 // submitting a prompt optimistically marks the agent busy so an immediate
-// esc routes to cancelAgent instead of reading a stale idle value and doing
-// nothing.
+// ctrl+esc routes to cancelAgent instead of reading a stale idle value and
+// doing nothing.
 func TestSendMessageSetsOptimisticBusy(t *testing.T) {
 	pinTTLs(t)
 
@@ -433,38 +433,24 @@ func TestSendMessageSetsOptimisticBusy(t *testing.T) {
 	require.True(t, m.isAgentBusy(),
 		"sendMessage must optimistically mark the agent busy")
 
-	// esc right after enter: isAgentBusy gates cancelAgent, first press
-	// arms the double-press cancel.
+	// ctrl+esc right after enter: isAgentBusy gates cancelAgent, and the
+	// single press cancels immediately (no double-press arm).
 	require.Zero(t, m.promptQueue)
 	m.cancelAgent()
-	require.True(t, m.isCanceling, "first esc press must arm cancellation")
-
-	// Second press must actually cancel.
-	m.cancelAgent()
-	require.Equal(t, 1, ws.cancelCalls, "second esc press must cancel the agent")
+	require.Equal(t, 1, ws.cancelCalls, "ctrl+esc must cancel the agent on the first press")
 }
 
-// TestCancelAgentClearsQueueFromCachedCount: the queue-clear decision must
-// come from the memoized count — no synchronous AgentQueuedPrompts probe —
-// and clearing must zero the cached count immediately.
-func TestCancelAgentClearsQueueFromCachedCount(t *testing.T) {
+// TestCancelAgentCancelsImmediately pins that cancelAgent stops the running
+// agent in a single call regardless of prior state.
+func TestCancelAgentCancelsImmediately(t *testing.T) {
 	pinTTLs(t)
 
-	ws := &countingWorkspace{ready: true, queued: []string{"a"}}
+	ws := &countingWorkspace{ready: true}
 	m := newBusyUI(ws)
 	warmCaches(m, true)
-	m.promptQueue = 1
-	m.promptQueueItems = []string{"a"}
-	ws.resetCounters()
 
-	cmd := m.cancelAgent()
-	require.Nil(t, cmd)
-	require.Equal(t, 1, ws.clearQueueCalls, "esc with a queue must clear it")
-	require.Zero(t, ws.queuedCalls, "the decision must use the cached count, not a probe")
-	require.Zero(t, ws.queueListCalls, "the decision must use the cached count, not a probe")
-	require.Zero(t, m.promptQueue, "the cached count must be zeroed immediately")
-	require.Empty(t, m.promptQueueItems)
-	require.False(t, m.isCanceling, "clearing the queue must not arm cancellation")
+	m.cancelAgent()
+	require.Equal(t, 1, ws.cancelCalls, "the first ctrl+esc must cancel the agent outright")
 }
 
 // TestBackstopRefreshesStaleCaches: when the memoized state outlives its TTL

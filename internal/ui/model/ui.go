@@ -236,9 +236,6 @@ type UI struct {
 	dialog *dialog.Overlay
 	status *Status
 
-	// isCanceling tracks whether the user has pressed escape once to cancel.
-	isCanceling bool
-
 	// bangMode tracks whether the editor is in bang (!) shell mode.
 	bangMode     bool
 	bangWasEmpty bool // true when bang prompt became empty on last keystroke
@@ -1142,8 +1139,6 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case pubsub.Event[question.Notification]:
 		m.handleQuestionNotification(msg.Payload)
-	case cancelTimerExpiredMsg:
-		m.isCanceling = false
 	case tea.TerminalVersionMsg:
 		termVersion := strings.ToLower(msg.Name)
 		// Only enable progress bar for the following terminals.
@@ -2817,14 +2812,11 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Batch(cmds...)
 	}
 
-	// Handle cancel key when agent is busy.
-	if key.Matches(msg, m.keyMap.Chat.Cancel) {
-		if m.isAgentBusy() {
-			if cmd := m.cancelAgent(); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			return tea.Batch(cmds...)
+	// Handle stop key (ctrl+esc) when agent is busy: cancel immediately.
+	if key.Matches(msg, m.keyMap.Chat.Stop) && m.isAgentBusy() {
+	if cmd := m.cancelAgent(); cmd != nil {
 		}
+		return tea.Batch(cmds...)
 	}
 
 	switch m.state {
@@ -2978,6 +2970,27 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					cmds = append(cmds, cmd)
 				}
 			case key.Matches(msg, m.keyMap.Editor.Escape):
+				if m.promptHistory.index >= 0 {
+					// Exiting history navigation restores the draft; treat
+					// it as a dedicated action, not a clear.
+					cmd := m.handleHistoryEscape(msg)
+					if cmd != nil {
+						cmds = append(cmds, cmd)
+					}
+					break
+				}
+				if m.textarea.Value() != "" {
+					// Esc clears the draft.
+					prevHeight := m.textarea.Height()
+					m.textarea.Reset()
+					m.historyReset()
+					if cmd := m.handleTextareaHeightChange(prevHeight); cmd != nil {
+						cmds = append(cmds, cmd)
+					}
+					break
+				}
+				// Empty textarea: let escape fall through to the usual
+				// consumer (clear selection / close etc.).
 				cmd := m.handleHistoryEscape(msg)
 				if cmd != nil {
 					cmds = append(cmds, cmd)
@@ -3589,15 +3602,9 @@ func (m *UI) ShortHelp() []key.Binding {
 	case uiInitialize:
 		binds = append(binds, k.Quit)
 	case uiChat:
-		// Show cancel binding if agent is busy.
+		// Show stop binding if agent is busy.
 		if m.isAgentBusy() {
-			cancelBinding := k.Chat.Cancel
-			if m.isCanceling {
-				cancelBinding.SetHelp("esc", "press again to cancel")
-			} else if m.promptQueue > 0 {
-				cancelBinding.SetHelp("esc", "clear queue")
-			}
-			binds = append(binds, cancelBinding)
+			binds = append(binds, k.Chat.Stop)
 		}
 
 		isSidebar := m.focus == uiFocusSidebar
@@ -3689,15 +3696,9 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Quit,
 			})
 	case uiChat:
-		// Show cancel binding if agent is busy.
+		// Show stop binding if agent is busy.
 		if m.isAgentBusy() {
-			cancelBinding := k.Chat.Cancel
-			if m.isCanceling {
-				cancelBinding.SetHelp("esc", "press again to cancel")
-			} else if m.promptQueue > 0 {
-				cancelBinding.SetHelp("esc", "clear queue")
-			}
-			binds = append(binds, []key.Binding{cancelBinding})
+			binds = append(binds, []key.Binding{k.Chat.Stop})
 		}
 
 		mainBinds := []key.Binding{}
@@ -5662,67 +5663,34 @@ func (m *UI) runShellCommandInternal(command string, isFirstMessage bool) tea.Cm
 	return tea.Batch(cmds...)
 }
 
-const cancelTimerDuration = 2 * time.Second
-
-// cancelTimerCmd creates a command that expires the cancel timer.
-func cancelTimerCmd() tea.Cmd {
-	return tea.Tick(cancelTimerDuration, func(time.Time) tea.Msg {
-		return cancelTimerExpiredMsg{}
-	})
-}
-
-// cancelAgent handles the cancel key press. The first press sets isCanceling to true
-// and starts a timer. The second press (before the timer expires) actually
-// cancels the agent.
+// cancelAgent stops the running agent immediately. ctrl+esc is the only
+// path here; a single press cancels outright (no double-press arm).
 func (m *UI) cancelAgent() tea.Cmd {
 	if !m.hasSession() {
 		return nil
 	}
 
-	// Gate on the memoized ready state: esc is a hot key and AgentIsReady
-	// is a synchronous HTTP round-trip in client/server mode.
+	// Gate on the memoized ready state: ctrl+esc is a hot key and
+	// AgentIsReady is a synchronous HTTP round-trip in client/server mode.
 	if !m.agentReady {
 		return nil
 	}
 
-	if m.isCanceling {
-		// Second escape press — actually cancel.
-		m.isCanceling = false
-
-		// Cancel a running bang command if one is in progress.
-		if m.bangCancel != nil {
-			m.bangCancel()
-			m.bangCancel = nil
-		}
-
-		m.com.Workspace.AgentCancel(m.session.ID)
-		// Stop the spinning todo indicator and drop the memoized busy
-		// state the cancel just changed; the pill re-renders now from
-		// last-known state and again when the off-thread refresh (and
-		// the agent's own events) land.
-		m.todoIsSpinning = false
-		m.invalidateBusyCaches()
-		m.renderPills()
-		return m.dispatchBusyRefresh()
+	// Cancel a running bang command if one is in progress.
+	if m.bangCancel != nil {
+		m.bangCancel()
+		m.bangCancel = nil
 	}
 
-	// Queued prompts pending: esc clears the queue. Decide from the cached
-	// count (event-driven) instead of a synchronous workspace probe.
-	if m.promptQueue > 0 {
-		m.com.Workspace.AgentClearQueue(m.session.ID)
-		m.promptQueue = 0
-		m.promptQueueItems = nil
-		m.promptQueueCheckedAt = time.Now()
-		// Bump the queue generation so a fetch started before this clear
-		// cannot land and repopulate the pill we just emptied.
-		m.invalidatePromptQueue()
-		m.updateLayoutAndSize()
-		return nil
-	}
-
-	// First escape press - set canceling state and start timer.
-	m.isCanceling = true
-	return cancelTimerCmd()
+	m.com.Workspace.AgentCancel(m.session.ID)
+	// Stop the spinning todo indicator and drop the memoized busy
+	// state the cancel just changed; the pill re-renders now from
+	// last-known state and again when the off-thread refresh (and
+	// the agent's own events) land.
+	m.todoIsSpinning = false
+	m.invalidateBusyCaches()
+	m.renderPills()
+	return m.dispatchBusyRefresh()
 }
 
 // openDialog opens a dialog by its ID.
