@@ -61,3 +61,4 @@ completions/crush.*sh
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+.codegraph/daemon.pid
