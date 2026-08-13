@@ -23,6 +23,9 @@ func NewReviewTool(workingDir string) fantasy.AgentTool {
 		ReviewToolName,
 		reviewDescription,
 		func(ctx context.Context, params ReviewParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if params.FromSHA == "" || params.ToSHA == "" {
+				return fantasy.NewTextErrorResponse("from_sha and to_sha are required"), nil
+			}
 			root := params.RepoRoot
 			if root == "" {
 				root = workingDir

@@ -27,6 +27,10 @@ func NewMemSearchTool(workingDir, dataDir string) fantasy.AgentTool {
 		MemSearchToolName,
 		memSearchDescription,
 		func(ctx context.Context, params MemSearchParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if strings.TrimSpace(params.Query) == "" {
+				return fantasy.NewTextErrorResponse("query is required"), nil
+			}
+
 			h, err := openMemStore(dataDir)
 			if err != nil {
 				return fantasy.NewTextErrorResponse("failed to open engram store: " + err.Error()), nil

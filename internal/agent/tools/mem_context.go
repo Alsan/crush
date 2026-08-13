@@ -29,16 +29,16 @@ func NewMemContextTool(workingDir, dataDir string) fantasy.AgentTool {
 				return fantasy.NewTextErrorResponse("failed to open engram store: " + err.Error()), nil
 			}
 
-			// RecentObservations filters by project when project is non-empty;
-			// use the working dir as the project so this surfaces the current
-			// project's context. For "personal", pass an empty project to
-			// include all projects.
+			// Default surfaces the current project's project-scoped memory;
+			// "personal" surfaces personal-scoped memory across all projects.
 			project := workingDir
+			scope := "project"
 			if params.Scope == "personal" {
 				project = ""
+				scope = "personal"
 			}
 
-			obs, err := h.RecentObservations(project, params.Scope, params.Limit)
+			obs, err := h.RecentObservations(project, scope, params.Limit)
 			if err != nil {
 				return fantasy.NewTextErrorResponse("context load failed: " + err.Error()), nil
 			}

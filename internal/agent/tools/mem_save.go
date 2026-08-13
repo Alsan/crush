@@ -36,6 +36,7 @@ func NewMemSaveTool(workingDir, dataDir string) fantasy.AgentTool {
 				Title:     params.Title,
 				Content:   params.Content,
 				Project:   workingDir,
+				Scope:     "project",
 				TopicKey:  params.TopicKey,
 				SessionID: "",
 			})

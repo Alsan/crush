@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	_ "embed"
+	"strings"
 
 	"charm.land/fantasy"
 )
@@ -23,6 +24,9 @@ func NewQueryTool(workingDir string) fantasy.AgentTool {
 		QueryToolName,
 		queryDescription,
 		func(ctx context.Context, params QueryParams, _ fantasy.ToolCall) (fantasy.ToolResponse, error) {
+			if strings.TrimSpace(params.Pattern) == "" || strings.TrimSpace(params.Target) == "" {
+				return fantasy.NewTextErrorResponse("pattern and target are required"), nil
+			}
 			root := params.RepoRoot
 			if root == "" {
 				root = workingDir
