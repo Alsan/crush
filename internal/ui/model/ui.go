@@ -5608,6 +5608,11 @@ func (m *UI) runShellCommandInternal(command string, isFirstMessage bool) tea.Cm
 	sessionID := m.session.ID
 	contentWidth := min(m.layout.main.Dx()-2, 120)
 
+	// Record the shell command locally so up-arrow recalls it even before
+	// the async DB write lands. Bang commands are stored with a "!" prefix
+	// so this matches the records loadPromptHistory produces.
+	m.recordPromptHistory("!" + command)
+
 	// Append a pending shell item immediately so the user sees feedback.
 	pendingItem := chat.NewPendingShellItem(m.com.Styles, command)
 	m.chat.AppendMessages(pendingItem)

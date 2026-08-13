@@ -25,7 +25,6 @@ type KeyMap struct {
 	Chat struct {
 		NewSession     key.Binding
 		AddAttachment  key.Binding
-		Cancel         key.Binding
 		Stop           key.Binding
 		Tab            key.Binding
 		Details        key.Binding
@@ -183,10 +182,6 @@ func DefaultKeyMap() KeyMap {
 	km.Chat.AddAttachment = key.NewBinding(
 		key.WithKeys("ctrl+f"),
 		key.WithHelp("ctrl+f", "add attachment"),
-	)
-	km.Chat.Cancel = key.NewBinding(
-		key.WithKeys("esc", "alt+esc"),
-		key.WithHelp("esc", "clear input"),
 	)
 	km.Chat.Stop = key.NewBinding(
 		key.WithKeys("ctrl+esc"),
