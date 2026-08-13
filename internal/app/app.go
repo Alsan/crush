@@ -108,15 +108,32 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 	cfg := store.Config()
 	skipPermissionsRequests := store.Overrides().SkipPermissionRequests
 	var allowedTools []string
-	if cfg.Permissions != nil && cfg.Permissions.AllowedTools != nil {
-		allowedTools = cfg.Permissions.AllowedTools
+	var excludedPaths []string
+	localYolo := true
+	if cfg.Permissions != nil {
+		if cfg.Permissions.AllowedTools != nil {
+			allowedTools = cfg.Permissions.AllowedTools
+		}
+		if cfg.Permissions.Yolo != nil {
+			localYolo = *cfg.Permissions.Yolo
+		}
+		if cfg.Permissions.ExcludedPaths != nil {
+			excludedPaths = cfg.Permissions.ExcludedPaths
+		}
 	}
+
+	// Local yolo mode defaults to on: permission prompts for paths inside
+	// the working directory are auto-approved. permissions.yolo=false
+	// disables it at startup. Exclusions are sourced from config; a nil
+	// slice keeps the built-in defaults.
+	perms := permission.NewPermissionServiceWithExclusions(store.WorkingDir(), skipPermissionsRequests, allowedTools, excludedPaths)
+	perms.SetLocalSkipRequests(localYolo)
 
 	app := &App{
 		Sessions:    sessions,
 		Messages:    messages,
 		History:     files,
-		Permissions: permission.NewPermissionService(store.WorkingDir(), skipPermissionsRequests, allowedTools),
+		Permissions: perms,
 		Questions:   question.NewService(),
 		FileTracker: filetracker.NewService(q),
 		LSPManager:  lsp.NewManager(store),

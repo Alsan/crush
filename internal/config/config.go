@@ -336,6 +336,12 @@ const (
 
 type Permissions struct {
 	AllowedTools []string `json:"allowed_tools,omitempty" jsonschema:"description=List of tools that don't require permission prompts,example=bash,example=view"`
+	// Yolo enables local yolo mode: permission prompts for paths inside
+	// the working directory are auto-approved. Defaults to true.
+	Yolo *bool `json:"yolo,omitempty" jsonschema:"description=Auto-approve permission prompts for paths inside the working directory (local yolo mode),default=true"`
+	// ExcludedPaths lists directories that local yolo mode never
+	// auto-approves, even when they sit inside the working directory.
+	ExcludedPaths []string `json:"excluded_paths,omitempty" jsonschema:"description=Directories that local yolo mode never auto-approves,example=~/.config/mysecret,example=/tmp"`
 }
 
 type TrailerStyle string

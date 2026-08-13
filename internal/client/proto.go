@@ -733,9 +733,10 @@ func (c *Client) CancelQuestionBatch(ctx context.Context, id string) (bool, erro
 	return resp.Resolved, nil
 }
 
-// SetPermissionsSkipRequests sets the skip-requests flag for a workspace.
-func (c *Client) SetPermissionsSkipRequests(ctx context.Context, id string, skip bool) error {
-	rsp, err := c.post(ctx, fmt.Sprintf("/workspaces/%s/permissions/skip", id), nil, jsonBody(proto.PermissionSkipRequest{Skip: skip}), http.Header{"Content-Type": []string{"application/json"}})
+// SetPermissionsSkipRequests sets the permission approval mode flags for a
+// workspace: Skip is the global yolo flag, Local enables local yolo mode.
+func (c *Client) SetPermissionsSkipRequests(ctx context.Context, id string, req proto.PermissionSkipRequest) error {
+	rsp, err := c.post(ctx, fmt.Sprintf("/workspaces/%s/permissions/skip", id), nil, jsonBody(req), http.Header{"Content-Type": []string{"application/json"}})
 	if err != nil {
 		return fmt.Errorf("failed to set permissions skip requests: %w", err)
 	}
@@ -746,21 +747,22 @@ func (c *Client) SetPermissionsSkipRequests(ctx context.Context, id string, skip
 	return nil
 }
 
-// GetPermissionsSkipRequests retrieves the skip-requests flag for a workspace.
-func (c *Client) GetPermissionsSkipRequests(ctx context.Context, id string) (bool, error) {
+// GetPermissionsSkipRequests retrieves the permission approval mode flags
+// for a workspace.
+func (c *Client) GetPermissionsSkipRequests(ctx context.Context, id string) (proto.PermissionSkipRequest, error) {
 	rsp, err := c.get(ctx, fmt.Sprintf("/workspaces/%s/permissions/skip", id), nil, nil)
 	if err != nil {
-		return false, fmt.Errorf("failed to get permissions skip requests: %w", err)
+		return proto.PermissionSkipRequest{}, fmt.Errorf("failed to get permissions skip requests: %w", err)
 	}
 	defer rsp.Body.Close()
 	if rsp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("failed to get permissions skip requests: status code %d", rsp.StatusCode)
+		return proto.PermissionSkipRequest{}, fmt.Errorf("failed to get permissions skip requests: status code %d", rsp.StatusCode)
 	}
-	var skip proto.PermissionSkipRequest
-	if err := json.NewDecoder(rsp.Body).Decode(&skip); err != nil {
-		return false, fmt.Errorf("failed to decode permissions skip requests: %w", err)
+	var req proto.PermissionSkipRequest
+	if err := json.NewDecoder(rsp.Body).Decode(&req); err != nil {
+		return proto.PermissionSkipRequest{}, fmt.Errorf("failed to decode permissions skip requests: %w", err)
 	}
-	return skip.Skip, nil
+	return req, nil
 }
 
 // GetConfig retrieves the workspace-specific configuration.

@@ -284,9 +284,12 @@ type QuestionNotification struct {
 	BatchID string `json:"batch_id"`
 }
 
-// PermissionSkipRequest represents a request to skip permission prompts.
+// PermissionSkipRequest carries the permission approval mode flags. Skip is
+// the global yolo flag; Local enables local yolo mode (auto-approve paths
+// inside the working directory).
 type PermissionSkipRequest struct {
-	Skip bool `json:"skip"`
+	Skip  bool `json:"skip"`
+	Local bool `json:"local,omitempty"`
 }
 
 // LSPEventType represents the type of LSP event.

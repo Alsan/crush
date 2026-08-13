@@ -11,8 +11,7 @@ package model
 // render; Init then refreshes them off-thread.)
 //
 //   - Reads (isAgentBusy, isCurrentSessionBusy, yoloModeCached, promptQueue,
-//     selectedLargeModel, lspInfo) always return the memoized value, stale or
-//     not.
+//     lspInfo) always return the memoized value, stale or not.
 //   - State edges (message created, agent finished/errored, prompt
 //     submitted, cancel, session switch, yolo toggle, model change, LSP
 //     events) invalidate or write through the caches and dispatch an
@@ -31,6 +30,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/charmbracelet/crush/internal/permission"
 	"github.com/charmbracelet/crush/internal/workspace"
 )
 
@@ -83,6 +83,25 @@ func (c *ttlCache) invalidate() {
 	c.at = time.Time{}
 }
 
+// modeCache memoizes the permission approval mode probe result.
+type modeCache struct {
+	val permission.Mode
+	at  time.Time
+}
+
+func (c *modeCache) fresh(ttl time.Duration) bool {
+	return !c.at.IsZero() && time.Since(c.at) < ttl
+}
+
+func (c *modeCache) set(val permission.Mode) {
+	c.val = val
+	c.at = time.Now()
+}
+
+func (c *modeCache) invalidate() {
+	c.at = time.Time{}
+}
+
 // busyStateMsg delivers the result of an off-thread busy/permission probe.
 type busyStateMsg struct {
 	// forSession is the session the probe was scoped to; a result that
@@ -97,7 +116,7 @@ type busyStateMsg struct {
 	ready       bool
 	agentBusy   bool
 	sessionBusy bool
-	yolo        bool
+	mode        permission.Mode
 	// model is the coordinator's selected model, fetched by the same probe
 	// so the sidebar/landing model info renders from memoized state. Zero
 	// (and ignored) when ready is false.
@@ -181,7 +200,7 @@ func (m *UI) dispatchBusyRefresh() tea.Cmd {
 			}
 			st.model = ws.AgentModel()
 		}
-		st.yolo = ws.PermissionSkipRequests()
+		st.mode = ws.PermissionMode()
 		return st
 	}
 }
@@ -200,31 +219,31 @@ func (m *UI) updateAgentModelCmd(pre tea.Cmd) tea.Cmd {
 // edges (todo spinner, pills). Runs on the Update goroutine.
 func (m *UI) applyBusyState(msg busyStateMsg) []tea.Cmd {
 	m.busyFetchInFlight = false
-	// Discard a probe that is stale on either axis: its generation predates a
-	// newer state transition (optimistic send, invalidation, ...), or it was
-	// scoped to a session that is no longer current. An empty forSession is a
-	// global probe and matches any current session. Re-dispatch so the
-	// required authoritative refresh is not lost to this older in-flight
-	// request.
 	if msg.gen != m.busyFetchGen || (msg.forSession != "" && msg.forSession != m.currentSessionID()) {
+		// Discard a probe that is stale on either axis: its generation
+		// predates a newer state transition (optimistic send, invalidation,
+		// ...), or it was scoped to a session that is no longer current. An
+		// empty forSession is a global probe and matches any current session.
+		// Re-dispatch so the required authoritative refresh is not lost to
+		// this older in-flight request.
 		if cmd := m.dispatchBusyRefresh(); cmd != nil {
 			return []tea.Cmd{cmd}
 		}
 		return nil
 	}
 	prevBusy := m.isCurrentSessionBusy()
-	prevYolo := m.yoloModeCached()
+	prevMode := m.yoloModeCached()
 	m.agentBusyCache.set(msg.agentBusy)
 	m.sessionBusyCache.setForSession(msg.sessionBusy, msg.forSession)
-	m.yoloCache.set(msg.yolo)
+	m.yoloCache.set(msg.mode)
 	m.agentReady = msg.ready
 	m.agentModel = msg.model
-	if prevYolo != msg.yolo {
-		// A remote/async toggle changed yolo mode: update the editor
-		// prompt function so the prompt icon/style tracks the new mode.
-		// The cache is written above and the placeholder is refreshed by
-		// the Update tail.
-		m.setEditorPrompt(msg.yolo)
+	if prevMode != msg.mode {
+		// A remote/async toggle changed the permission mode: update the
+		// editor prompt function so the prompt icon/style tracks the new
+		// mode. The cache is written above and the placeholder is
+		// refreshed by the Update tail.
+		m.setEditorPrompt(msg.mode)
 	}
 
 	var cmds []tea.Cmd
@@ -312,10 +331,9 @@ func (m *UI) staleWorkspaceRefreshCmds() []tea.Cmd {
 		return nil
 	}
 	var cmds []tea.Cmd
-	busyStale := !m.agentBusyCache.fresh(busyCacheTTL) ||
+	if !m.agentBusyCache.fresh(busyCacheTTL) ||
 		!m.yoloCache.fresh(busyCacheTTL) ||
-		(m.hasSession() && !m.sessionBusyCache.freshFor(busyCacheTTL, m.session.ID))
-	if busyStale {
+		(m.hasSession() && !m.sessionBusyCache.freshFor(busyCacheTTL, m.session.ID)) {
 		if cmd := m.dispatchBusyRefresh(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -333,27 +351,36 @@ func (m *UI) staleWorkspaceRefreshCmds() []tea.Cmd {
 	return cmds
 }
 
-// toggleYoloMode flips permission auto-approval and writes the new value
-// through the yolo cache (no re-probe needed) and the editor prompt. Shared
-// by the direct keybinding and the commands-dialog action so both stay
-// write-through. Returns the new mode.
-func (m *UI) toggleYoloMode() bool {
-	yolo := !m.com.Workspace.PermissionSkipRequests()
-	m.com.Workspace.PermissionSetSkipRequests(yolo)
-	m.yoloCache.set(yolo)
+// toggleYoloMode cycles the permission approval mode and writes the new
+// value through the yolo cache (no re-probe needed) and the editor prompt.
+// Shared by the direct keybinding and the commands-dialog action so both
+// stay write-through. Returns the new mode.
+func (m *UI) toggleYoloMode() permission.Mode {
+	mode := m.com.Workspace.PermissionMode()
+	var next permission.Mode
+	switch mode {
+	case permission.ModeOff:
+		next = permission.ModeLocal
+	case permission.ModeLocal:
+		next = permission.ModeGlobal
+	default:
+		next = permission.ModeOff
+	}
+	m.com.Workspace.PermissionSetMode(next)
+	m.yoloCache.set(next)
 	// Supersede any in-flight busy/yolo probe: its result carries the old
 	// generation and would otherwise overwrite the value we just wrote.
 	// Bump the generation (rather than invalidateBusyCaches, which would
 	// clear the fresh value) so applyBusyState's guard discards and
 	// re-dispatches the stale probe.
 	m.busyFetchGen++
-	m.setEditorPrompt(yolo)
-	return yolo
+	m.setEditorPrompt(next)
+	return next
 }
 
-// yoloModeCached reports the memoized permission-skip ("yolo") mode. Toggles
+// yoloModeCached reports the memoized permission approval mode. Toggles
 // write through the cache; the Update-tail backstop keeps it bounded-stale
 // otherwise.
-func (m *UI) yoloModeCached() bool {
+func (m *UI) yoloModeCached() permission.Mode {
 	return m.yoloCache.val
 }

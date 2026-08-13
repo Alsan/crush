@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/crush/internal/config"
 	"github.com/charmbracelet/crush/internal/lsp"
 	"github.com/charmbracelet/crush/internal/message"
+	"github.com/charmbracelet/crush/internal/permission"
 	"github.com/charmbracelet/crush/internal/pubsub"
 	"github.com/charmbracelet/crush/internal/scheduler"
 	"github.com/charmbracelet/crush/internal/session"
@@ -36,11 +37,11 @@ type countingWorkspace struct {
 	// sessionBusy is the value AgentIsSessionBusy reports (fork: session-
 	// scoped busy).
 	sessionBusy bool
-	yolo        bool
-	queued      []string
-	model       workspace.AgentModel
-	lspStates   map[string]workspace.LSPClientInfo
-	lspDiags    map[string]lsp.DiagnosticCounts
+	mode        permission.Mode
+	queued    []string
+	model     workspace.AgentModel
+	lspStates map[string]workspace.LSPClientInfo
+	lspDiags  map[string]lsp.DiagnosticCounts
 
 	readyCalls     int
 	agentBusyCalls int
@@ -48,14 +49,14 @@ type countingWorkspace struct {
 	// with, in order (fork: session-scoped busy).
 	sessionBusyCalls []string
 	queuedCalls      int
-	queueListCalls   int
-	permCalls        int
-	permSetCalls     int
-	clearQueueCalls  int
-	cancelCalls      int
-	modelCalls       int
-	lspStateCalls    int
-	lspDiagCalls     int
+	queueListCalls  int
+	permCalls       int
+	permSetCalls    int
+	clearQueueCalls int
+	cancelCalls     int
+	modelCalls      int
+	lspStateCalls   int
+	lspDiagCalls    int
 }
 
 func (w *countingWorkspace) AgentIsReady() bool { w.readyCalls++; return w.ready }
@@ -87,17 +88,15 @@ func (w *countingWorkspace) AgentQueuedPromptsList(string) []string {
 	return w.queued
 }
 
-func (w *countingWorkspace) PermissionSkipRequests() bool { w.permCalls++; return w.yolo }
+func (w *countingWorkspace) PermissionMode() permission.Mode { w.permCalls++; return w.mode }
 
-func (w *countingWorkspace) PermissionSetSkipRequests(skip bool) {
+func (w *countingWorkspace) PermissionSetMode(mode permission.Mode) {
 	w.permSetCalls++
-	w.yolo = skip
+	w.mode = mode
 }
 
 func (w *countingWorkspace) AgentClearQueue(string) { w.clearQueueCalls++; w.queued = nil }
 func (w *countingWorkspace) AgentCancel(string)     { w.cancelCalls++ }
-
-func (w *countingWorkspace) AgentListCronTasks(string) []scheduler.Task { return nil }
 
 func (w *countingWorkspace) AgentModel() workspace.AgentModel {
 	w.modelCalls++
@@ -114,12 +113,6 @@ func (w *countingWorkspace) LSPGetDiagnosticCounts(name string) lsp.DiagnosticCo
 	return w.lspDiags[name]
 }
 
-// sendMessage retires the Sidekick dashboard and retries its
-// subscription on every prompt; report it unavailable here.
-func (w *countingWorkspace) SidekickDashboardSubscribe(context.Context) <-chan pubsub.Event[agenttools.SidekickSurface] {
-	return nil
-}
-
 func (w *countingWorkspace) ListMessages(context.Context, string) ([]message.Message, error) {
 	return nil, nil
 }
@@ -129,6 +122,14 @@ func (w *countingWorkspace) ListUserMessages(context.Context, string) ([]message
 }
 
 func (w *countingWorkspace) WorkingDir() string { return "" }
+
+func (w *countingWorkspace) AgentListCronTasks(string) []scheduler.Task { return nil }
+
+// sendMessage retires the Sidekick dashboard and retries its
+// subscription on every prompt; report it unavailable here.
+func (w *countingWorkspace) SidekickDashboardSubscribe(context.Context) <-chan pubsub.Event[agenttools.SidekickSurface] {
+	return nil
+}
 
 func (w *countingWorkspace) LSPStart(context.Context, string) {}
 
@@ -183,13 +184,15 @@ func pinTTLs(t *testing.T) {
 }
 
 // warmCaches marks all memoized workspace state fresh so only explicit
+// invalidation (not startup staleness) can trigger refresh dispatches.
+// warmCaches marks all memoized workspace state fresh so only explicit
 // invalidation (not startup staleness) can trigger refresh dispatches. It
 // warms the session-scoped busy cache too, since the TTL backstop treats an
 // unwarmed sessionBusyCache as stale (fork: session-scoped busy).
 func warmCaches(m *UI, busy bool) {
 	m.agentBusyCache.set(busy)
 	m.sessionBusyCache.setForSession(busy, m.currentSessionID())
-	m.yoloCache.set(false)
+	m.yoloCache.set(permission.ModeOff)
 	m.agentReady = true
 	m.promptQueueCheckedAt = time.Now()
 	m.lspCheckedAt = time.Now()
@@ -365,23 +368,23 @@ func TestSessionSwitchRefreshesQueueAndBusy(t *testing.T) {
 func TestToggleYoloWritesThroughCache(t *testing.T) {
 	pinTTLs(t)
 
-	ws := &countingWorkspace{ready: true, yolo: false}
+	ws := &countingWorkspace{ready: true, mode: permission.ModeOff}
 	m := newBusyUI(ws)
 
 	got := m.toggleYoloMode()
-	require.True(t, got)
+	require.Equal(t, permission.ModeLocal, got)
 	require.Equal(t, 1, ws.permSetCalls)
 	readsAfterToggle := ws.permCalls
 	require.Equal(t, 1, readsAfterToggle, "toggle reads the authoritative value exactly once")
 
-	require.True(t, m.yoloModeCached(), "the new value must be served from the cache")
+	require.Equal(t, permission.ModeLocal, m.yoloModeCached(), "the new value must be served from the cache")
 	require.True(t, m.yoloCache.fresh(busyCacheTTL), "write-through must stamp the cache fresh")
 	m.yoloModeCached()
 	require.Equal(t, readsAfterToggle, ws.permCalls, "reads after the toggle must not re-probe")
 
 	got = m.toggleYoloMode()
-	require.False(t, got)
-	require.False(t, m.yoloModeCached())
+	require.Equal(t, permission.ModeGlobal, got)
+	require.Equal(t, permission.ModeGlobal, m.yoloModeCached())
 }
 
 // TestLocalYoloToggleSupersedesInFlightProbe pins the generation bump in
@@ -391,7 +394,7 @@ func TestToggleYoloWritesThroughCache(t *testing.T) {
 func TestLocalYoloToggleSupersedesInFlightProbe(t *testing.T) {
 	pinTTLs(t)
 
-	ws := &countingWorkspace{ready: true, yolo: false}
+	ws := &countingWorkspace{ready: true, mode: permission.ModeOff}
 	m := newBusyUI(ws)
 	warmCaches(m, false)
 
@@ -399,15 +402,15 @@ func TestLocalYoloToggleSupersedesInFlightProbe(t *testing.T) {
 	m.busyFetchInFlight = true
 	staleGen := m.busyFetchGen
 
-	require.True(t, m.toggleYoloMode())
+	require.Equal(t, permission.ModeLocal, m.toggleYoloMode())
 	require.NotEqual(t, staleGen, m.busyFetchGen,
 		"toggle must advance the busy generation to supersede in-flight probes")
-	require.True(t, m.yoloModeCached(), "toggle must write the new value through the cache")
+	require.Equal(t, permission.ModeLocal, m.yoloModeCached(), "toggle must write the new value through the cache")
 
-	// The stale probe (old generation, old yolo=false) lands.
+	// The stale probe (old generation, old mode=off) lands.
 	m.busyFetchInFlight = true
-	cmds := m.applyBusyState(busyStateMsg{gen: staleGen, yolo: false})
-	require.True(t, m.yoloModeCached(),
+	cmds := m.applyBusyState(busyStateMsg{gen: staleGen, mode: permission.ModeOff})
+	require.Equal(t, permission.ModeLocal, m.yoloModeCached(),
 		"stale probe must not overwrite the freshly toggled value")
 	require.NotEmpty(t, cmds, "stale probe must re-dispatch an authoritative refresh")
 	require.True(t, m.busyFetchInFlight, "re-dispatched refresh must be in flight")
@@ -786,13 +789,13 @@ func TestRemoteYoloToggleUpdatesEditorPrompt(t *testing.T) {
 	m := newBusyUI(ws)
 	m.textarea.Focus()
 	m.textarea.SetWidth(40)
-	m.yoloCache.set(false)
-	m.setEditorPrompt(false)
+	m.yoloCache.set(permission.ModeOff)
+	m.setEditorPrompt(permission.ModeOff)
 	normalPrompt := ansi.Strip(m.textarea.View())
 
 	// A remote toggle flips yolo on; delivered via an off-thread refresh.
-	m.applyBusyState(busyStateMsg{gen: m.busyFetchGen, yolo: true})
-	require.True(t, m.yoloModeCached(), "the refresh must write the new yolo value through the cache")
+	m.applyBusyState(busyStateMsg{gen: m.busyFetchGen, mode: permission.ModeGlobal, sessionBusy: true})
+	require.Equal(t, permission.ModeGlobal, m.yoloModeCached(), "the refresh must write the new yolo value through the cache")
 	yoloPrompt := ansi.Strip(m.textarea.View())
 	require.NotEqual(t, normalPrompt, yoloPrompt,
 		"a remote yolo toggle must change the rendered editor prompt")
@@ -800,8 +803,8 @@ func TestRemoteYoloToggleUpdatesEditorPrompt(t *testing.T) {
 		"the yolo prompt icon must render after a remote toggle")
 
 	// Flipping back off must restore the normal prompt.
-	m.applyBusyState(busyStateMsg{gen: m.busyFetchGen, yolo: false})
-	require.False(t, m.yoloModeCached())
+	m.applyBusyState(busyStateMsg{gen: m.busyFetchGen, mode: permission.ModeOff, sessionBusy: false})
+	require.Equal(t, permission.ModeOff, m.yoloModeCached())
 	require.Equal(t, normalPrompt, ansi.Strip(m.textarea.View()),
 		"toggling yolo off must restore the normal editor prompt")
 }

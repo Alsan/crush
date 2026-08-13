@@ -461,16 +461,20 @@ func (w *ClientWorkspace) PermissionDeny(perm permission.PermissionRequest) bool
 	return resolved
 }
 
-func (w *ClientWorkspace) PermissionSkipRequests() bool {
-	skip, err := w.client.GetPermissionsSkipRequests(context.Background(), w.workspaceID())
+func (w *ClientWorkspace) PermissionMode() permission.Mode {
+	req, err := w.client.GetPermissionsSkipRequests(context.Background(), w.workspaceID())
 	if err != nil {
-		return false
+		return permission.ModeOff
 	}
-	return skip
+	return permission.ModeFromFlags(req.Skip, req.Local)
 }
 
-func (w *ClientWorkspace) PermissionSetSkipRequests(skip bool) {
-	_ = w.client.SetPermissionsSkipRequests(context.Background(), w.workspaceID(), skip)
+func (w *ClientWorkspace) PermissionSetMode(mode permission.Mode) {
+	global, local := mode.Flags()
+	_ = w.client.SetPermissionsSkipRequests(context.Background(), w.workspaceID(), proto.PermissionSkipRequest{
+		Skip:  global,
+		Local: local,
+	})
 }
 
 // -- Questions --

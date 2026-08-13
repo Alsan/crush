@@ -38,23 +38,29 @@ func (b *Backend) GrantPermission(workspaceID string, req proto.PermissionGrant)
 	}
 }
 
-// SetPermissionsSkip sets whether permission prompts are skipped.
-func (b *Backend) SetPermissionsSkip(workspaceID string, skip bool) error {
+// SetPermissionsSkip sets the permission approval mode flags for a
+// workspace: Skip is the global yolo flag, Local enables local yolo mode.
+func (b *Backend) SetPermissionsSkip(workspaceID string, req proto.PermissionSkipRequest) error {
 	ws, err := b.GetWorkspace(workspaceID)
 	if err != nil {
 		return err
 	}
 
-	ws.Permissions.SetSkipRequests(skip)
+	ws.Permissions.SetSkipRequests(req.Skip)
+	ws.Permissions.SetLocalSkipRequests(req.Local)
 	return nil
 }
 
-// GetPermissionsSkip returns whether permission prompts are skipped.
-func (b *Backend) GetPermissionsSkip(workspaceID string) (bool, error) {
+// GetPermissionsSkip returns the permission approval mode flags for a
+// workspace.
+func (b *Backend) GetPermissionsSkip(workspaceID string) (proto.PermissionSkipRequest, error) {
 	ws, err := b.GetWorkspace(workspaceID)
 	if err != nil {
-		return false, err
+		return proto.PermissionSkipRequest{}, err
 	}
 
-	return ws.Permissions.SkipRequests(), nil
+	return proto.PermissionSkipRequest{
+		Skip:  ws.Permissions.SkipRequests(),
+		Local: ws.Permissions.LocalSkipRequests(),
+	}, nil
 }

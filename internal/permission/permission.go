@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -81,6 +82,12 @@ type Service interface {
 	AutoApproveSession(sessionID string)
 	SetSkipRequests(skip bool)
 	SkipRequests() bool
+	// SetLocalSkipRequests enables or disables local yolo mode: requests
+	// whose target path lies inside the working directory subtree are
+	// auto-approved.
+	SetLocalSkipRequests(local bool)
+	// LocalSkipRequests reports whether local yolo mode is enabled.
+	LocalSkipRequests() bool
 	SubscribeNotifications(ctx context.Context) <-chan pubsub.Event[PermissionNotification]
 }
 
@@ -102,7 +109,13 @@ type permissionService struct {
 	autoApproveSessions   map[string]bool
 	autoApproveSessionsMu sync.RWMutex
 	skip                  atomic.Bool
+	localSkip             atomic.Bool
 	allowedTools          []string
+	// excludedPaths are absolute, symlink-resolved directories that local
+	// yolo mode never auto-approves, even when they sit inside the working
+	// directory subtree. Defaults are seeded from the built-in list; callers
+	// may override/extend them via config.
+	excludedPaths []string
 
 	// used to make sure we only process one request at a time
 	requestMu       sync.Mutex
@@ -186,6 +199,20 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	// Check if the tool/action combination is in the allowlist
 	commandKey := opts.ToolName + ":" + opts.Action
 	if slices.Contains(s.allowedTools, commandKey) || slices.Contains(s.allowedTools, opts.ToolName) {
+		return true, nil
+	}
+
+	// Local yolo mode: auto-approve requests whose target path resolves
+	// inside the working directory subtree. Pathless requests (e.g. bash),
+	// requests outside the subtree, and requests under an excluded path
+	// fall through to the normal flow. A granted notification is published
+	// so the UI and audit subscribers see the outcome, matching the other
+	// auto-approval paths.
+	if s.localSkip.Load() && s.withinSubtree(opts.Path) && !s.withinExcluded(opts.Path) {
+		s.notificationBroker.Publish(pubsub.CreatedEvent, PermissionNotification{
+			ToolCallID: opts.ToolCallID,
+			Granted:    true,
+		})
 		return true, nil
 	}
 
@@ -295,16 +322,173 @@ func (s *permissionService) SkipRequests() bool {
 	return s.skip.Load()
 }
 
+func (s *permissionService) SetLocalSkipRequests(local bool) {
+	s.localSkip.Store(local)
+}
+
+func (s *permissionService) LocalSkipRequests() bool {
+	return s.localSkip.Load()
+}
+
+// withinSubtree reports whether path refers to a location at or under the
+// service's working directory. It resolves symlinks along the deepest
+// existing ancestor so a target that does not exist yet (e.g. a file about
+// to be created) is still checked against the real directory hierarchy, and
+// it rejects paths that escape the subtree via ".." or symlinks.
+func (s *permissionService) withinSubtree(path string) bool {
+	if path == "" {
+		return false
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	abs = resolveExisting(abs)
+	rel, err := filepath.Rel(s.workingDir, abs)
+	if err != nil {
+		return false
+	}
+	if rel == "." {
+		return true
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
+}
+
+// withinExcluded reports whether path resolves at or under one of the
+// configured exclusion roots. Symlink resolution is applied the same way as
+// withinSubtree so an excluded location cannot be aliased past the check.
+func (s *permissionService) withinExcluded(path string) bool {
+	if path == "" || len(s.excludedPaths) == 0 {
+		return false
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	abs = resolveExisting(abs)
+	for _, excluded := range s.excludedPaths {
+		rel, err := filepath.Rel(excluded, abs)
+		if err != nil {
+			continue
+		}
+		if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveExisting resolves symlinks for the deepest existing ancestor of
+// path and re-appends the (possibly non-existent) remainder, so the result
+// is an absolute path whose real on-disk prefix is symlink-free. It returns
+// path unchanged when nothing on the path exists or symlink resolution
+// fails.
+func resolveExisting(path string) string {
+	existing := path
+	var suffix []string
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		}
+		parent := filepath.Dir(existing)
+		if parent == existing {
+			return path
+		}
+		suffix = append([]string{filepath.Base(existing)}, suffix...)
+		existing = parent
+	}
+	resolved, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return path
+	}
+	parts := append([]string{resolved}, suffix...)
+	return filepath.Join(parts...)
+}
+
 func NewPermissionService(workingDir string, skip bool, allowedTools []string) Service {
+	return NewPermissionServiceWithExclusions(workingDir, skip, allowedTools, nil)
+}
+
+// NewPermissionServiceWithExclusions constructs a permission service with an
+// explicit set of exclusion roots for local yolo mode. When exclusions is
+// nil the built-in default set (~/.agents, ~/.claude, ~/go, ~/.config/crush,
+// ~/.cache, /tmp) is used; a non-nil slice replaces it entirely.
+func NewPermissionServiceWithExclusions(workingDir string, skip bool, allowedTools []string, exclusions []string) Service {
+	// Normalize the working directory once at construction so subtree
+	// checks are stable: resolve to an absolute, symlink-free path. On
+	// macOS /var is a symlink to /private/var; without this a target
+	// resolved via EvalSymlinks would never appear inside the raw
+	// workingDir and every local-yolo check would conservatively fail.
+	wd := workingDir
+	if wd != "" {
+		if abs, err := filepath.Abs(wd); err == nil {
+			wd = abs
+		}
+		if resolved, err := filepath.EvalSymlinks(wd); err == nil {
+			wd = resolved
+		}
+	}
 	svc := &permissionService{
 		Broker:              pubsub.NewBroker[PermissionRequest](),
 		notificationBroker:  pubsub.NewBroker[PermissionNotification](),
-		workingDir:          workingDir,
+		workingDir:          wd,
 		sessionPermissions:  csync.NewMap[PermissionKey, bool](),
 		autoApproveSessions: make(map[string]bool),
 		allowedTools:        allowedTools,
 		pendingRequests:     csync.NewMap[string, chan bool](),
+		excludedPaths:       normalizeExclusions(exclusions),
 	}
 	svc.skip.Store(skip)
 	return svc
+}
+
+// normalizeExclusions expands each exclusion root to an absolute,
+// symlink-resolved directory. A nil input selects the built-in defaults.
+func normalizeExclusions(exclusions []string) []string {
+	if exclusions == nil {
+		exclusions = defaultExcludedPaths()
+	}
+	var normalized []string
+	for _, p := range exclusions {
+		expanded, err := expandHome(p)
+		if err != nil {
+			continue
+		}
+		if abs, err := filepath.Abs(expanded); err == nil {
+			expanded = abs
+		}
+		normalized = append(normalized, resolveExisting(expanded))
+	}
+	return normalized
+}
+
+// defaultExcludedPaths returns the absolute, symlink-resolved directories
+// that local yolo mode never auto-approves. These guard user-owned
+// configuration, tooling locations, and system temp space that a project
+// should not be able to modify silently, even when the working directory
+// sits inside one of them.
+func defaultExcludedPaths() []string {
+	return []string{
+		"~/.agents",
+		"~/.claude",
+		"~/go",
+		"~/.config/crush",
+		"~/.cache",
+		"/tmp",
+	}
+}
+
+// expandHome expands a leading "~/" to the current user's home directory.
+func expandHome(p string) (string, error) {
+	if !strings.HasPrefix(p, "~/") {
+		return p, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, strings.TrimPrefix(p, "~/")), nil
 }

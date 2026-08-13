@@ -220,8 +220,11 @@ type Workspace interface {
 	PermissionGrant(perm permission.PermissionRequest) bool
 	PermissionGrantPersistent(perm permission.PermissionRequest) bool
 	PermissionDeny(perm permission.PermissionRequest) bool
-	PermissionSkipRequests() bool
-	PermissionSetSkipRequests(skip bool)
+	// PermissionMode reports the permission approval mode (off, local, or
+	// global yolo).
+	PermissionMode() permission.Mode
+	// PermissionSetMode sets the permission approval mode.
+	PermissionSetMode(mode permission.Mode)
 
 	// Questions
 	//

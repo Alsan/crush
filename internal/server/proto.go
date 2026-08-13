@@ -1131,7 +1131,7 @@ func (c *controllerV1) handlePostWorkspacePermissionsSkip(w http.ResponseWriter,
 		return
 	}
 
-	if err := c.backend.SetPermissionsSkip(id, req.Skip); err != nil {
+	if err := c.backend.SetPermissionsSkip(id, req); err != nil {
 		c.handleError(w, r, err)
 		return
 	}
@@ -1154,7 +1154,7 @@ func (c *controllerV1) handleGetWorkspacePermissionsSkip(w http.ResponseWriter, 
 		c.handleError(w, r, err)
 		return
 	}
-	jsonEncode(w, proto.PermissionSkipRequest{Skip: skip})
+	jsonEncode(w, skip)
 }
 
 // handleError maps backend errors to HTTP status codes and writes the

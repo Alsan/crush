@@ -714,6 +714,22 @@
           },
           "type": "array",
           "description": "List of tools that don't require permission prompts"
+        },
+        "yolo": {
+          "type": "boolean",
+          "description": "Auto-approve permission prompts for paths inside the working directory (local yolo mode)",
+          "default": true
+        },
+        "excluded_paths": {
+          "items": {
+            "type": "string",
+            "examples": [
+              "~/.config/mysecret",
+              "/tmp"
+            ]
+          },
+          "type": "array",
+          "description": "Directories that local yolo mode never auto-approves"
         }
       },
       "additionalProperties": false,

@@ -356,12 +356,17 @@ func (w *AppWorkspace) PermissionDeny(perm permission.PermissionRequest) bool {
 	return w.app.Permissions.Deny(perm)
 }
 
-func (w *AppWorkspace) PermissionSkipRequests() bool {
-	return w.app.Permissions.SkipRequests()
+func (w *AppWorkspace) PermissionMode() permission.Mode {
+	return permission.ModeFromFlags(
+		w.app.Permissions.SkipRequests(),
+		w.app.Permissions.LocalSkipRequests(),
+	)
 }
 
-func (w *AppWorkspace) PermissionSetSkipRequests(skip bool) {
-	w.app.Permissions.SetSkipRequests(skip)
+func (w *AppWorkspace) PermissionSetMode(mode permission.Mode) {
+	global, local := mode.Flags()
+	w.app.Permissions.SetSkipRequests(global)
+	w.app.Permissions.SetLocalSkipRequests(local)
 }
 
 // -- Questions --

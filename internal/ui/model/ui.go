@@ -401,7 +401,7 @@ type UI struct {
 	// (see workspace_cache.go).
 	sessionBusyCache  ttlCache
 	agentBusyCache    ttlCache
-	yoloCache         ttlCache
+	yoloCache         modeCache
 	busyFetchInFlight bool
 	// agentReady / agentModel memoize the coordinator readiness and
 	// selected model (AgentIsReady/AgentModel are synchronous HTTP GETs in
@@ -548,8 +548,8 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	// Seed the yolo cache once at construction; afterwards it is kept
 	// fresh by write-through toggles and off-thread refreshes so Update
 	// and View never probe the workspace synchronously.
-	yolo := com.Workspace.PermissionSkipRequests()
-	ui.yoloCache.set(yolo)
+	mode := com.Workspace.PermissionMode()
+	ui.yoloCache.set(mode)
 
 	// Seed the memoized agent ready/model state the same way so the first
 	// frame renders the model info; the busy probe keeps it fresh
@@ -558,7 +558,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 		ui.agentReady = true
 		ui.agentModel = com.Workspace.AgentModel()
 	}
-	ui.setEditorPrompt(yolo)
+	ui.setEditorPrompt(mode)
 	ui.randomizePlaceholders()
 	ui.textarea.Placeholder = ui.readyPlaceholder
 	ui.status = status
@@ -1576,7 +1576,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.textarea.Placeholder = m.readyPlaceholder
 		}
-		if !m.bangMode && m.yoloModeCached() {
+		if !m.bangMode && m.yoloModeCached() != permission.ModeOff {
 			m.textarea.Placeholder = "Yolo mode!"
 		}
 	}
@@ -2738,12 +2738,8 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 			cmds = append(cmds, tea.Suspend)
 			return true
 		case key.Matches(msg, m.keyMap.ToggleYolo):
-			yolo := m.toggleYoloMode()
-			status := "disabled"
-			if yolo {
-				status = "enabled"
-			}
-			cmds = append(cmds, util.ReportInfo("Yolo mode "+status))
+			mode := m.toggleYoloMode()
+			cmds = append(cmds, util.ReportInfo("Yolo mode "+mode.String()))
 			return true
 		}
 		return false
@@ -4259,18 +4255,21 @@ func (m *UI) openEditor(value string) tea.Cmd {
 	})
 }
 
-// setEditorPrompt configures the textarea prompt function based on whether
-// yolo mode or bang mode is enabled.
-func (m *UI) setEditorPrompt(yolo bool) {
+// setEditorPrompt configures the textarea prompt function based on the
+// permission mode (off, local yolo, or global yolo) and bang mode.
+func (m *UI) setEditorPrompt(mode permission.Mode) {
 	if m.bangMode {
 		m.textarea.SetPromptFunc(4, m.bangPromptFunc)
 		return
 	}
-	if yolo {
+	switch mode {
+	case permission.ModeGlobal:
 		m.textarea.SetPromptFunc(4, m.yoloPromptFunc)
-		return
+	case permission.ModeLocal:
+		m.textarea.SetPromptFunc(4, m.localYoloPromptFunc)
+	default:
+		m.textarea.SetPromptFunc(4, m.normalPromptFunc)
 	}
-	m.textarea.SetPromptFunc(4, m.normalPromptFunc)
 }
 
 // normalPromptFunc returns the normal editor prompt style ("  > " on first
@@ -4304,6 +4303,22 @@ func (m *UI) yoloPromptFunc(info textarea.PromptInfo) string {
 		return t.Editor.PromptYoloDotsFocused.Render()
 	}
 	return t.Editor.PromptYoloDotsBlurred.Render()
+}
+
+// localYoloPromptFunc returns the local yolo mode editor prompt style with a
+// green "Y" icon (paths inside the working directory are auto-approved).
+func (m *UI) localYoloPromptFunc(info textarea.PromptInfo) string {
+	t := m.com.Styles
+	if info.LineNumber == 0 {
+		if info.Focused {
+			return t.Editor.PromptYoloLocalIconFocused.Render()
+		}
+		return t.Editor.PromptYoloLocalIconBlurred.Render()
+	}
+	if info.Focused {
+		return t.Editor.PromptYoloLocalDotsFocused.Render()
+	}
+	return t.Editor.PromptYoloLocalDotsBlurred.Render()
 }
 
 // bangPromptFunc returns the bang mode editor prompt style with Turtle-colored
