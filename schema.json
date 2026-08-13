@@ -724,12 +724,12 @@
           "items": {
             "type": "string",
             "examples": [
-              "~/.config/mysecret",
-              "/tmp"
+              "~/.config/crush",
+              "/data/trusted"
             ]
           },
           "type": "array",
-          "description": "Directories that local yolo mode never auto-approves"
+          "description": "Extra directories auto-approved in local yolo mode beyond the working directory"
         }
       },
       "additionalProperties": false,

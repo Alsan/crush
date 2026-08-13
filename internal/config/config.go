@@ -339,9 +339,11 @@ type Permissions struct {
 	// Yolo enables local yolo mode: permission prompts for paths inside
 	// the working directory are auto-approved. Defaults to true.
 	Yolo *bool `json:"yolo,omitempty" jsonschema:"description=Auto-approve permission prompts for paths inside the working directory (local yolo mode),default=true"`
-	// ExcludedPaths lists directories that local yolo mode never
-	// auto-approves, even when they sit inside the working directory.
-	ExcludedPaths []string `json:"excluded_paths,omitempty" jsonschema:"description=Directories that local yolo mode never auto-approves,example=~/.config/mysecret,example=/tmp"`
+	// ExcludedPaths lists extra directories that local yolo mode also
+	// auto-approves, in addition to the working directory subtree. Use this
+	// to trust config or tooling directories (e.g. ~/.config/crush) outside
+	// the project.
+	ExcludedPaths []string `json:"excluded_paths,omitempty" jsonschema:"description=Extra directories auto-approved in local yolo mode beyond the working directory,example=~/.config/crush,example=/data/trusted"`
 }
 
 type TrailerStyle string

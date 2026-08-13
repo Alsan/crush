@@ -142,65 +142,87 @@ func TestPermissionService_LocalYoloPublishesGrantedNotification(t *testing.T) {
 	}
 }
 
-// TestPermissionService_LocalYoloDefaultExcludedPaths verifies that local yolo
-// mode never auto-approves requests under the built-in exclusion roots
-// (~/.agents, ~/.claude, ~/go, ~/.config/crush, ~/.cache), even when they sit
-// inside the working directory.
-func TestPermissionService_LocalYoloDefaultExcludedPaths(t *testing.T) {
+// TestPermissionService_LocalYoloExtraPathsAutoApproved verifies that local
+// yolo mode auto-approves requests under a configured extra root even when it
+// sits outside the working directory subtree, so trusted directories like
+// ~/.config/crush do not prompt.
+func TestPermissionService_LocalYoloExtraPathsAutoApproved(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
+	// Workdir lives in a separate temp dir so the extra root (sibling of
+	// HOME, outside the subtree) is only approved because it is listed.
+	workDir := t.TempDir()
+	extra := filepath.Join(home, ".config", "crush")
+	require.NoError(t, os.MkdirAll(extra, 0o755))
+
+	service := NewPermissionServiceWithExclusions(workDir, false, nil, []string{extra})
+	service.SetLocalSkipRequests(true)
+
 	for _, rel := range []string{
-		".agents",
-		".agents/skills",
-		".agents/skills/my-skill/SKILL.md",
-		".claude",
-		".claude/settings.json",
-		"go",
-		"go/pkg/mod/example.com/foo",
 		".config/crush",
-		".config/crush/crush.json",
-		".cache",
-		".cache/crush",
+		".config/crush/AGENTS.md",
+		".config/crush/agent.json",
 	} {
 		rel := rel
 		t.Run(rel, func(t *testing.T) {
-			service := NewPermissionService(home, false, nil)
-			service.SetLocalSkipRequests(true)
-
-			granted := requestAndDeny(t, service, "call-x", "edit", "write", filepath.Join(home, rel))
-			assert.False(t, granted, "excluded path %q must still prompt", rel)
+			granted, err := service.Request(t.Context(), CreatePermissionRequest{
+				SessionID:  "s1",
+				ToolCallID: "call-x",
+				ToolName:   "edit",
+				Action:     "write",
+				Path:       filepath.Join(home, rel),
+			})
+			require.NoError(t, err)
+			assert.True(t, granted, "listed extra root %q must be auto-approved", rel)
 		})
 	}
 }
 
-// TestPermissionService_LocalYoloConfigExclusions verifies that explicitly
-// configured exclusion roots are honored, and that a non-nil exclusion list
-// replaces the built-in defaults entirely.
-func TestPermissionService_LocalYoloConfigExclusions(t *testing.T) {
+// TestPermissionService_LocalYoloNoExtraConfigPrompts verifies that without
+// a configured extra list, local yolo auto-approves only paths inside the
+// working directory subtree; an out-of-subtree path still prompts.
+func TestPermissionService_LocalYoloNoExtraConfigPrompts(t *testing.T) {
 	t.Parallel()
 
 	workDir := t.TempDir()
-	custom := filepath.Join(workDir, "vendor")
-	require.NoError(t, os.MkdirAll(custom, 0o755))
+	outside := t.TempDir()
 
-	service := NewPermissionServiceWithExclusions(workDir, false, nil, []string{custom})
+	service := NewPermissionService(workDir, false, nil)
 	service.SetLocalSkipRequests(true)
 
-	// The configured exclusion still prompts.
-	granted := requestAndDeny(t, service, "call-1", "edit", "write", filepath.Join(custom, "lib.go"))
-	assert.False(t, granted, "an explicitly excluded path must still prompt")
+	granted := requestAndDeny(t, service, "call-1", "edit", "write", filepath.Join(outside, "file.go"))
+	assert.False(t, granted, "an unlisted out-of-subtree path must still prompt")
+}
 
-	// A sibling outside the exclusion roots is still auto-approved.
+// TestPermissionService_LocalYoloConfigExtraRoots verifies that a configured
+// extra root is auto-approved even outside the subtree, while a path beneath
+// the working directory that is not covered by an extra root stays approved
+// via the subtree and a path outside both still prompts.
+func TestPermissionService_LocalYoloConfigExtraRoots(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	extra := t.TempDir()
+	outside := t.TempDir()
+
+	service := NewPermissionServiceWithExclusions(workDir, false, nil, []string{extra})
+	service.SetLocalSkipRequests(true)
+
+	// A path inside the configured extra root is auto-approved.
 	granted, err := service.Request(t.Context(), CreatePermissionRequest{
 		SessionID:  "s1",
-		ToolCallID: "call-2",
+		ToolCallID: "call-1",
 		ToolName:   "edit",
 		Action:     "write",
-		Path:       filepath.Join(workDir, "main.go"),
+		Path:       filepath.Join(extra, "cfg.json"),
 	})
 	require.NoError(t, err)
-	assert.True(t, granted, "a non-excluded in-subtree path must be auto-approved")
+	assert.True(t, granted, "a path inside a configured extra root must be auto-approved")
+
+	// A path outside both the subtree and any extra root still prompts.
+	granted = requestAndDeny(t, service, "call-2", "edit", "write", filepath.Join(outside, "file.go"))
+	assert.False(t, granted, "a path outside the subtree and extra roots must still prompt")
 }
 
 // TestPermissionService_GlobalYoloSupersedesLocal verifies that global yolo

@@ -124,8 +124,8 @@ func New(ctx context.Context, conn *sql.DB, store *config.ConfigStore, skillsMgr
 
 	// Local yolo mode defaults to on: permission prompts for paths inside
 	// the working directory are auto-approved. permissions.yolo=false
-	// disables it at startup. Exclusions are sourced from config; a nil
-	// slice keeps the built-in defaults.
+	// disables it at startup. Extra trusted paths are sourced from config;
+	// a nil slice means no extra roots beyond the working directory.
 	perms := permission.NewPermissionServiceWithExclusions(store.WorkingDir(), skipPermissionsRequests, allowedTools, excludedPaths)
 	perms.SetLocalSkipRequests(localYolo)
 

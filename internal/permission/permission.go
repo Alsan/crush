@@ -111,11 +111,11 @@ type permissionService struct {
 	skip                  atomic.Bool
 	localSkip             atomic.Bool
 	allowedTools          []string
-	// excludedPaths are absolute, symlink-resolved directories that local
-	// yolo mode never auto-approves, even when they sit inside the working
-	// directory subtree. Defaults are seeded from the built-in list; callers
-	// may override/extend them via config.
-	excludedPaths []string
+	// extraPaths are absolute, symlink-resolved directories that local yolo
+	// mode auto-approves in addition to the working directory subtree.
+	// Used to trust configuration or tooling directories (e.g.
+	// ~/.config/crush) that are outside the project but must be readable.
+	extraPaths []string
 
 	// used to make sure we only process one request at a time
 	requestMu       sync.Mutex
@@ -203,15 +203,14 @@ func (s *permissionService) Request(ctx context.Context, opts CreatePermissionRe
 	}
 
 	// Local yolo mode: auto-approve requests whose target path resolves
-	// inside the working directory subtree. Pathless requests (e.g. bash),
-	// requests outside the subtree, and requests under an excluded path
-	// fall through to the normal flow. The absolute path is resolved once
-	// and shared by the subtree and exclusion checks so the (syscall-heavy)
-	// symlink walk does not run twice per request. A granted notification
-	// is published so the UI and audit subscribers see the outcome,
-	// matching the other auto-approval paths.
+	// inside the working directory subtree or under an extra trusted root.
+	// Pathless requests (e.g. bash) still fall through to the normal flow.
+	// The absolute path is resolved once and shared by the subtree and extra
+	// checks so the (syscall-heavy) symlink walk does not run twice per
+	// request. A granted notification is published so the UI and audit
+	// subscribers see the outcome, matching the other auto-approval paths.
 	if s.localSkip.Load() {
-		if abs := s.resolvePath(opts.Path); abs != "" && s.withinSubtree(abs) && !s.withinExcluded(abs) {
+		if abs := s.resolvePath(opts.Path); abs != "" && (s.withinSubtree(abs) || s.withinExtra(abs)) {
 			s.notificationBroker.Publish(pubsub.CreatedEvent, PermissionNotification{
 				ToolCallID: opts.ToolCallID,
 				Granted:    true,
@@ -372,16 +371,17 @@ func (s *permissionService) withinSubtree(abs string) bool {
 	return true
 }
 
-// withinExcluded reports whether path (already absolute and symlink-resolved
-// via resolvePath) resolves at or under one of the configured exclusion
-// roots. Symlink resolution is applied the same way as withinSubtree so an
-// excluded location cannot be aliased past the check.
-func (s *permissionService) withinExcluded(abs string) bool {
-	if abs == "" || len(s.excludedPaths) == 0 {
+// withinExtra reports whether path (already absolute and symlink-resolved
+// via resolvePath) resolves at or under one of the configured extra trusted
+// roots that local yolo auto-approves beyond the working directory. Symlink
+// resolution is applied the same way as withinSubtree so an aliased path
+// cannot dodge the check.
+func (s *permissionService) withinExtra(abs string) bool {
+	if abs == "" || len(s.extraPaths) == 0 {
 		return false
 	}
-	for _, excluded := range s.excludedPaths {
-		rel, err := filepath.Rel(excluded, abs)
+	for _, root := range s.extraPaths {
+		rel, err := filepath.Rel(root, abs)
 		if err != nil {
 			continue
 		}
@@ -424,9 +424,10 @@ func NewPermissionService(workingDir string, skip bool, allowedTools []string) S
 }
 
 // NewPermissionServiceWithExclusions constructs a permission service with an
-// explicit set of exclusion roots for local yolo mode. When exclusions is
-// nil the built-in default set (~/.agents, ~/.claude, ~/go, ~/.config/crush,
-// ~/.cache, /tmp) is used; a non-nil slice replaces it entirely.
+// explicit set of extra roots that local yolo mode auto-approves beyond the
+// working directory subtree. When exclusions is nil, local yolo auto-approves
+// only paths inside the working directory; a non-nil slice adds those roots
+// (e.g. a trusted config directory like ~/.config/crush).
 func NewPermissionServiceWithExclusions(workingDir string, skip bool, allowedTools []string, exclusions []string) Service {
 	// Normalize the working directory once at construction so subtree
 	// checks are stable: resolve to an absolute, symlink-free path. On
@@ -450,20 +451,17 @@ func NewPermissionServiceWithExclusions(workingDir string, skip bool, allowedToo
 		autoApproveSessions: make(map[string]bool),
 		allowedTools:        allowedTools,
 		pendingRequests:     csync.NewMap[string, chan bool](),
-		excludedPaths:       normalizeExclusions(exclusions),
+		extraPaths:          normalizeExtraPaths(exclusions),
 	}
 	svc.skip.Store(skip)
 	return svc
 }
 
-// normalizeExclusions expands each exclusion root to an absolute,
-// symlink-resolved directory. A nil input selects the built-in defaults.
-func normalizeExclusions(exclusions []string) []string {
-	if exclusions == nil {
-		exclusions = defaultExcludedPaths()
-	}
+// normalizeExtraPaths expands each extra root to an absolute, symlink-resolved
+// directory. A nil input yields no extra auto-approved paths.
+func normalizeExtraPaths(extra []string) []string {
 	var normalized []string
-	for _, p := range exclusions {
+	for _, p := range extra {
 		expanded, err := expandHome(p)
 		if err != nil {
 			continue
@@ -474,22 +472,6 @@ func normalizeExclusions(exclusions []string) []string {
 		normalized = append(normalized, resolveExisting(expanded))
 	}
 	return normalized
-}
-
-// defaultExcludedPaths returns the absolute, symlink-resolved directories
-// that local yolo mode never auto-approves. These guard user-owned
-// configuration, tooling locations, and system temp space that a project
-// should not be able to modify silently, even when the working directory
-// sits inside one of them.
-func defaultExcludedPaths() []string {
-	return []string{
-		"~/.agents",
-		"~/.claude",
-		"~/go",
-		"~/.config/crush",
-		"~/.cache",
-		"/tmp",
-	}
 }
 
 // expandHome expands a leading "~/" to the current user's home directory.
