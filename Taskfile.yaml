@@ -151,7 +151,7 @@ tasks:
     vars:
       LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/charmbracelet/crush/internal/version.Version={{.VERSION}}"{{end}}'
     cmds:
-      - task: fetch-tags
+      - git tag -d nightly || true
       - go install {{.LDFLAGS}} -v .
     sources:
       - ./**/*.go
@@ -206,16 +206,11 @@ tasks:
       - sh: 'gh run list --workflow snapshot.yml --commit $(git rev-parse HEAD) --status success --json conclusion -q ".[0].conclusion" | grep -q success'
         msg: "Snapshot build for this commit failed or not present"
     cmds:
-      - task: fetch-tags
+      - git tag -d nightly || true
       - git commit --allow-empty -m "{{.NEXT}}"
       - git tag --annotate --sign -m "{{.NEXT}}" {{.NEXT}} {{.CLI_ARGS}}
       - echo "Pushing {{.NEXT}}..."
       - git push origin main --follow-tags
-
-  fetch-tags:
-    cmds:
-      - git tag -d nightly || true
-      - git fetch --tags
 
   deps:
     desc: Update Fantasy and Catwalk
