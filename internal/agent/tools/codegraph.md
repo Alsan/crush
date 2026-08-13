@@ -1,25 +1,26 @@
 # Codegraph
-Forward to a better_code_review_graph tool function and return its JSON result.
+Native access to CodeGraph's CLI knowledge-graph index over this codebase.
 
 ## Usage
 
 ```json
 {
-  "tool": "query_graph",
-  "params": { "pattern": "callers_of", "target": "SomeFunction" },
-  "repo_root": "/path/to/repo"
+  "op": "query",
+  "query": "handleRequest",
+  "path": "/path/to/repo",
+  "limit": 10
 }
 ```
 
 ## Params
 
-- `tool` (string, required): the better-code-review-graph function to call. One of:
-  `build_or_update_graph`, `query_graph`, `review_delta`, `diff_graph`,
-  `get_review_context`, `get_docs_section`, `get_impact_radius`,
-  `list_graph_stats`, `semantic_search_nodes`, `find_large_functions`,
-  `embed_graph`, `export_graph_dispatch`, `import_graph_dispatch`,
-  `renamed_in_diff`.
-- `repo_root` (string, optional): repository root; defaults to the working directory.
-- `params` (object, optional): keyword arguments for the chosen tool.
+- `op` (string, required): CodeGraph CLI subcommand:
+  `query`, `callers`, `callees`, `context`, `files`, `impact`, `affected`,
+  `index`, `sync`, `status`.
+- `path` (string, optional): project path; defaults to the working directory.
+- `query` / `symbol` (string, optional): the search term or symbol for
+  `query`, `callers`, `callees`, `context`.
+- `limit` (int, optional): max results.
+- `files` (list, optional): changed files for `affected`.
 
-Run-to-completion is bounded by `CRUSH_BCRG_TIMEOUT` (seconds, default 300); output is capped to keep memory bounded.
+Run-to-completion is bounded by `CRUSH_CODEGRAPH_TIMEOUT` (seconds, default 300); output is capped to keep memory bounded.
