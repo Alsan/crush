@@ -160,6 +160,18 @@ tasks:
       - internal/agent/**/*.md.tpl
       - internal/agent/hyper/provider.json
 
+  clean:
+    desc: Remove the Go build cache
+    cmds:
+      - go clean -cache
+
+  rebuild:
+    desc: "Force a full rebuild with -a, recompiling all replace-module deps (e.g. engram) regardless of Go's build cache. Combine with clean to also purge the cache (task clean rebuild)"
+    vars:
+      LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/charmbracelet/crush/internal/version.Version={{.VERSION}}"{{end}}'
+    cmds:
+      - go build -v -a {{.LDFLAGS}} .
+
   profile:cpu:
     desc: 10s CPU profile
     cmds:
