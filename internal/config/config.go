@@ -57,9 +57,8 @@ const (
 )
 
 const (
-	AgentCoder    string = "coder"
-	AgentTask     string = "task"
-	AgentSidekick string = "sidekick"
+	AgentCoder string = "coder"
+	AgentTask  string = "task"
 )
 
 type SelectedModel struct {
@@ -210,19 +209,6 @@ type MCPConfig struct {
 	// "Header:".
 	Headers map[string]string `json:"headers,omitempty" jsonschema:"description=HTTP headers for HTTP/SSE MCP servers"`
 
-	// ChannelEnabled enables an MCP server as a channel directly from config,
-	// equivalent to passing its name via --channels on the CLI. This lets
-	// channels be declared persistently in crush.json without needing a CLI
-	// flag on every launch.
-	ChannelEnabled bool `json:"channel_enabled,omitempty" jsonschema:"description=Enable this MCP server as a channel (equivalent to --channels),default=false"`
-
-	// ChannelReply, when set on a server enabled as a channel, makes Crush
-	// route the final assistant response of every turn that originated from
-	// this channel back through one of the server's own tools, so a message
-	// received on the channel gets a reply on the channel even when the
-	// model only produced terminal output.
-	ChannelReply *MCPChannelReply `json:"channel_reply,omitempty" jsonschema:"description=Automatically route replies for turns originating from this channel back through one of the server's tools"`
-
 	// OAuth enables the MCP OAuth 2.1 authorization flow for HTTP
 	// transport servers. When true, the client uses dynamic client
 	// registration and opens a browser for the user to authorize.
@@ -258,39 +244,6 @@ func (m MCPConfig) isOrphanedToken() bool {
 	return m.Type == "" && m.Command == "" && m.URL == "" && m.OAuthToken != nil
 }
 
-// MCPChannelReply configures deterministic reply routing for an MCP server
-// acting as a channel: which of the server's tools deliver a reply for
-// direct and group pushes, and how the reply text and target are mapped
-// onto tool arguments.
-type MCPChannelReply struct {
-	// User routes replies to direct (person-to-person) channel pushes.
-	User *MCPChannelReplyRoute `json:"user,omitempty" jsonschema:"description=Reply route for direct messages"`
-	// Group routes replies to group channel pushes. It is preferred over
-	// User when the push carries the group route's meta attribute.
-	Group *MCPChannelReplyRoute `json:"group,omitempty" jsonschema:"description=Reply route for group messages"`
-	// MessageParam is the tool argument that receives the reply text.
-	MessageParam string `json:"message_param,omitempty" jsonschema:"description=Tool argument name that receives the reply text,default=message"`
-	// SuppressTools lists additional tool names (beyond the two route
-	// tools) that count as the model having already replied on the channel
-	// during the turn, e.g. an operator-shortcut send tool.
-	SuppressTools []string `json:"suppress_tools,omitempty" jsonschema:"description=Additional tool names that suppress the automatic reply when the model already called one of them during the turn,example=send"`
-}
-
-// MCPChannelReplyRoute maps one kind of inbound channel push onto the MCP
-// tool call that delivers a reply to it.
-type MCPChannelReplyRoute struct {
-	// Tool is the MCP tool (bare name, without the mcp_<server>_ prefix)
-	// invoked to deliver the reply.
-	Tool string `json:"tool" jsonschema:"required,description=MCP tool name that sends the reply,example=send_message_to_user"`
-	// TargetParam is the tool argument that receives the reply target
-	// (recipient or group ID).
-	TargetParam string `json:"target_param" jsonschema:"required,description=Tool argument name that receives the reply target,example=user_id"`
-	// TargetMeta is the <channel> meta attribute whose value identifies
-	// the reply target. Defaults to "sender" for the user route and
-	// "group" for the group route.
-	TargetMeta string `json:"target_meta,omitempty" jsonschema:"description=Channel meta attribute carrying the reply target; defaults to sender (user route) or group (group route)"`
-}
-
 type LSPConfig struct {
 	Disabled    bool              `json:"disabled,omitempty" jsonschema:"description=Whether this LSP server is disabled,default=false"`
 	Command     string            `json:"command,omitempty" jsonschema:"description=Command to execute for the LSP server,example=gopls"`
@@ -312,9 +265,6 @@ type TUIOptions struct {
 	Completions Completions `json:"completions,omitzero" jsonschema:"description=Completions UI options"`
 	Transparent *bool       `json:"transparent,omitempty" jsonschema:"description=Enable transparent background for the TUI interface,default=false"`
 	Scrollbar   string      `json:"scrollbar,omitempty" jsonschema:"description=Chat scrollbar visibility,enum=default,enum=always,enum=never,default=default"`
-	// WorkingDirFormat controls how the working directory is rendered in
-	// the header. Supported placeholders: {cwd}, {user}, {host}.
-	WorkingDirFormat string `json:"working_dir_format,omitempty" jsonschema:"description=Format for the working directory shown in the header. Supported placeholders: {cwd} for the path\\, {user} for the current user\\, {host} for the hostname.,default={user}@{host}:{cwd},example={cwd},example={host}:{cwd}"`
 }
 
 // Completions defines options for the completions UI.
@@ -392,34 +342,9 @@ type Options struct {
 	Progress                  *bool        `json:"progress,omitempty" jsonschema:"description=Show indeterminate progress updates during long operations,default=true"`
 	Notifications             string       `json:"notifications,omitempty" jsonschema:"description=Notification style to use. Options: auto (default)\\, native\\, osc\\, bell\\, disabled. Auto selects based on environment: native for local sessions\\, osc for SSH (with automatic OSC 99/777 detection).,enum=auto,enum=native,enum=osc,enum=bell,enum=disabled,default=auto"`
 	DisabledSkills            []string     `json:"disabled_skills,omitempty" jsonschema:"description=List of skill names to disable and hide from the agent,example=crush-config"`
-	DisableA2UI               bool         `json:"disable_a2ui,omitempty" jsonschema:"description=Disable A2UI entirely: drops the prompt section inviting the model to emit renderable <a2ui-json> surfaces and stops advertising the a2ui capability to MCP servers,default=false"`
-	// AllowedCommands specifies commands that should be removed from the default
-	// banned commands list, allowing the agent to execute them via the bash tool.
-	// This provides a way to selectively enable commands like "ssh" or "curl"
-	// that are blocked by default for security reasons. It only subtracts from
-	// the exact-command block list; package-manager argument blocks such as
-	// "apt install" or "npm -g" are unaffected. Allowed commands are still
-	// subject to the normal permission prompt (they are not auto-approved).
-	AllowedCommands []string `json:"allowed_commands,omitempty" jsonschema:"description=List of commands to allow that are normally banned. Only affects the exact-command block list; package-manager argument blocks (e.g. 'apt install') are unaffected. Allowed commands still require permission approval.,example=ssh,example=curl,example=scp"`
-	// AllowAllCommands removes all restrictions from the banned commands list,
-	// allowing the agent to execute any command via the bash tool. Unlike
-	// allowed_commands, this also removes the package-manager argument blocks.
-	// This is a dangerous option and should be used with caution.
-	AllowAllCommands bool `json:"allow_all_commands,omitempty" jsonschema:"description=Remove all command restrictions from the bash tool, including package-manager argument blocks (dangerous). Commands still require permission approval unless yolo mode is enabled.,default=false"`
 }
 
 type MCPs map[string]MCPConfig
-
-// EmbeddingsConfig configures the embedding provider that backs the
-// semantic_search tool. It points at any OpenAI-compatible
-// /v1/embeddings endpoint. A nil config disables semantic search
-// entirely — the tool is not registered.
-type EmbeddingsConfig struct {
-	BaseURL   string `json:"base_url,omitempty" jsonschema:"description=Base URL of an OpenAI-compatible embeddings endpoint,default=https://api.openai.com/v1,example=https://api.openai.com/v1"`
-	APIKey    string `json:"api_key,omitempty" jsonschema:"description=API key for the embeddings endpoint. Supports shell expansion of $VAR and $(command)."`
-	Model     string `json:"model,omitempty" jsonschema:"description=Embedding model name,default=text-embedding-3-small,example=text-embedding-3-small"`
-	Dimension int    `json:"dimension,omitempty" jsonschema:"description=Embedding vector dimension. Baked into the vector table on first creation; changing it requires reindexing.,default=768,example=768"`
-}
 
 type MCP struct {
 	Name string    `json:"name"`
@@ -719,26 +644,6 @@ func (h *HookConfig) TimeoutDuration() time.Duration {
 	return time.Duration(h.Timeout) * time.Second
 }
 
-// ResolvedEmbeddings returns the effective embedding configuration with
-// defaults applied, and whether semantic search is enabled at all. The
-// second return value is false when no embeddings block is configured.
-func (c *Config) ResolvedEmbeddings() (EmbeddingsConfig, bool) {
-	if c.Embeddings == nil {
-		return EmbeddingsConfig{}, false
-	}
-	e := *c.Embeddings
-	if e.BaseURL == "" {
-		e.BaseURL = "https://api.openai.com/v1"
-	}
-	if e.Model == "" {
-		e.Model = "text-embedding-3-small"
-	}
-	if e.Dimension <= 0 {
-		e.Dimension = 768
-	}
-	return e, true
-}
-
 // Config holds the configuration for crush.
 type Config struct {
 	Schema string `json:"$schema,omitempty"`
@@ -755,10 +660,6 @@ type Config struct {
 	MCP MCPs `json:"mcp,omitempty" jsonschema:"description=Model Context Protocol server configurations"`
 
 	LSP LSPs `json:"lsp,omitempty" jsonschema:"description=Language Server Protocol configurations"`
-
-	// Embeddings enables the semantic_search tool. Nil (the default)
-	// leaves the tool unregistered.
-	Embeddings *EmbeddingsConfig `json:"embeddings,omitempty" jsonschema:"description=Embedding provider configuration for semantic search"`
 
 	Options *Options `json:"options,omitempty" jsonschema:"description=General application options"`
 
@@ -897,9 +798,6 @@ func allToolNames() []string {
 		"bash",
 		"crush_info",
 		"crush_logs",
-		"CronCreate",
-		"CronList",
-		"CronDelete",
 		"job_output",
 		"job_kill",
 		"download",
@@ -919,17 +817,12 @@ func allToolNames() []string {
 		"grep",
 		"ls",
 		"question",
-		"semantic_search",
-		"semantic_index",
-		"sidekick_update",
 		"sourcegraph",
 		"todos",
 		"view",
 		"write",
 		"list_mcp_resources",
 		"read_mcp_resource",
-		"list_mcp_prompts",
-		"call_mcp_prompt",
 		"mem_save",
 		"mem_search",
 		"mem_context",
@@ -937,7 +830,7 @@ func allToolNames() []string {
 		"query",
 		"review",
 		"bcgraph",
-		"codegraph",
+		"tokensave",
 	}
 }
 
@@ -950,17 +843,9 @@ func resolveAllowedTools(allTools []string, disabledTools []string) []string {
 }
 
 func resolveReadOnlyTools(tools []string) []string {
-	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "semantic_search", "sourcegraph", "view"}
+	readOnlyTools := []string{"glob", "grep", "ls", "lsp_call_hierarchy", "lsp_definition", "lsp_symbols", "sourcegraph", "tokensave", "view"}
 	// filter to only include tools that are in allowedtools (include mode)
 	return filterSlice(tools, readOnlyTools, true)
-}
-
-// resolveSidekickTools returns the Sidekick tool subset: the read-only
-// tools plus bash (the Sidekick gets the read-only bash variant under the
-// same tool name). Disabling a tool globally also removes it here.
-func resolveSidekickTools(tools []string) []string {
-	sidekickTools := []string{"bash", "glob", "grep", "ls", "sourcegraph", "view"}
-	return filterSlice(tools, sidekickTools, true)
 }
 
 func filterSlice(data []string, mask []string, include bool) []string {
@@ -995,17 +880,6 @@ func (c *Config) SetupAgents() {
 			Model:        SelectedModelTypeLarge,
 			ContextPaths: c.Options.ContextPaths,
 			AllowedTools: resolveReadOnlyTools(allowedTools),
-			// NO MCPs or LSPs by default
-			AllowedMCP: map[string][]string{},
-		},
-
-		AgentSidekick: {
-			ID:           AgentSidekick,
-			Name:         "Sidekick",
-			Description:  "A read-only companion agent that answers questions about the workspace without interrupting the coder agent.",
-			Model:        SelectedModelTypeSmall,
-			ContextPaths: c.Options.ContextPaths,
-			AllowedTools: resolveSidekickTools(allowedTools),
 			// NO MCPs or LSPs by default
 			AllowedMCP: map[string][]string{},
 		},

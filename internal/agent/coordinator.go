@@ -1219,7 +1219,7 @@ func (c *coordinator) buildTools(ctx context.Context, agent config.Agent, isSubA
 		tools.NewQueryTool(c.cfg.WorkingDir()),
 		tools.NewReviewTool(c.cfg.WorkingDir()),
 		tools.NewBcgraphTool(c.cfg.WorkingDir()),
-		tools.NewCodegraphTool(c.cfg.WorkingDir()),
+		tools.NewTokensaveTool(c.cfg.WorkingDir()),
 	)
 
 	// Question tool is interactive-only and not available to sub-agents.
@@ -1489,6 +1489,13 @@ func (c *coordinator) buildOpenaiCompatProvider(baseURL, apiKey string, headers 
 			}),
 		)
 		httpClient = copilot.NewClient(isSubAgent, c.cfg.Config().Options.Debug)
+	case string(catwalk.InferenceProviderOpenCodeGo), string(catwalk.InferenceProviderOpenCodeZen):
+		// The OpenCode endpoints serve GPT-5 models via the Responses API.
+		// Their chat-completions stream omits the terminal finish_reason
+		// (always null) and the [DONE] sentinel, which fantasy treats as an
+		// incomplete stream and retries indefinitely. Routing GPT-4/GPT-5
+		// models through /v1/responses returns a proper completion signal.
+		opts = append(opts, openaicompat.WithUseResponsesAPI())
 	}
 	if httpClient == nil && c.cfg.Config().Options.Debug {
 		httpClient = log.NewHTTPClient()
