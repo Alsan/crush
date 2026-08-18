@@ -392,6 +392,18 @@ func (c *coordinator) run(ctx context.Context, accept *AcceptedRun, sessionID st
 		}
 	}
 
+	// Auto-reload config if any tracked files changed on disk since
+	// the last load (e.g. user edits crushrc in another terminal).
+	if s := c.cfg.ConfigStaleness(); s.Dirty {
+		reloadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		if err := c.cfg.ReloadFromDisk(reloadCtx); err != nil {
+			slog.Warn("Config hot-reload failed, continuing with stale config", "error", err, "changed", s.Changed)
+		} else {
+			slog.Info("Config hot-reloaded", "changed", s.Changed, "missing", s.Missing)
+		}
+		cancel()
+	}
+
 	// refresh models before each run
 	if err := c.UpdateModels(ctx); err != nil {
 		return nil, fmt.Errorf("failed to update models: %w", err)

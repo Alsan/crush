@@ -36,5 +36,14 @@
         "semanticTokens": true
       }
     }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^bash$",
+        "command": "./hooks/pre-commit-review.sh",
+        "timeout": 5
+      }
+    ]
   }
 }

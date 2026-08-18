@@ -39,11 +39,12 @@ const (
 var tokensaveOps = []string{
 	"status", "files", "entities", "search", "find",
 	"node", "body", "callers", "callees", "impact",
+	"complexity", "test_map", "deps",
 }
 
 // TokensaveParams are the inputs for the tokensave tool.
 type TokensaveParams struct {
-	Op        string `json:"op" description:"Operation: status|files|entities|search|find|node|body|callers|callees|impact"`
+	Op        string `json:"op" description:"Operation: status|files|entities|search|find|node|body|callers|callees|impact|complexity|test_map|deps"`
 	Root      string `json:"root,omitempty" description:"Project root containing .tokensave/tokensave.db (defaults to working dir)"`
 	ID        string `json:"id,omitempty" description:"Node ID from a previous search/find result"`
 	Name      string `json:"name,omitempty" description:"Exact symbol name (for find/body)"`
@@ -191,6 +192,12 @@ func runTokensave(ctx context.Context, root string, p *TokensaveParams) (string,
 			return "", fmt.Errorf("id is required for impact")
 		}
 		return g.traverseNeighbors(qctx, p, true, tokensaveDefaultImpactDep)
+	case "complexity":
+		return g.complexity(qctx, p)
+	case "test_map":
+		return g.testMap(qctx, p)
+	case "deps":
+		return g.deps(qctx, p)
 	}
 	return "", fmt.Errorf("unhandled op %q", p.Op)
 }
@@ -544,6 +551,172 @@ func tokensaveReadSource(root, rel string) (string, error) {
 		return "", fmt.Errorf("failed to read %s: %w", rel, err)
 	}
 	return string(b), nil
+}
+
+func (g *tokensaveGraph) complexity(ctx context.Context, p *TokensaveParams) (string, error) {
+	q := `SELECT id, kind, name, file_path, start_line, COALESCE(signature,''),
+	      cognitive_complexity, branches, loops, max_nesting
+	      FROM nodes WHERE kind IN ('function','method')`
+	args := []any{}
+	if p.File != "" {
+		q += " AND file_path LIKE ?"
+		args = append(args, p.File+"%")
+	}
+	q += " ORDER BY cognitive_complexity DESC LIMIT ?"
+	args = append(args, g.limit)
+	rows, err := g.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return "", fmt.Errorf("failed to query complexity: %w", err)
+	}
+	defer rows.Close()
+	type complexityRow struct {
+		tokensaveSymbol
+		CognitiveComplexity int `json:"cognitive_complexity"`
+		Branches            int `json:"branches"`
+		Loops               int `json:"loops"`
+		MaxNesting          int `json:"max_nesting"`
+	}
+	var out []complexityRow
+	for rows.Next() {
+		var r complexityRow
+		if err := rows.Scan(&r.ID, &r.Kind, &r.Name, &r.File, &r.Line, &r.Signature,
+			&r.CognitiveComplexity, &r.Branches, &r.Loops, &r.MaxNesting); err != nil {
+			return "", fmt.Errorf("failed to scan complexity row: %w", err)
+		}
+		out = append(out, r)
+	}
+	return tokensaveJSON(out)
+}
+
+type testMapEntry struct {
+	TestFile  string   `json:"test_file"`
+	TestFuncs []string `json:"test_functions"`
+	Sources   []string `json:"source_files"`
+}
+
+func (g *tokensaveGraph) testMap(ctx context.Context, p *TokensaveParams) (string, error) {
+	// Find test files by path pattern.
+	testQ := `SELECT path FROM files WHERE (path LIKE '%_test.go' OR path LIKE '%_test.py'
+	          OR path LIKE '%test_%' OR path LIKE '%/tests/%' OR path LIKE '%/test/%'
+	          OR path LIKE '%spec_%' OR path LIKE '%_spec.go' OR path LIKE '%_spec.py')`
+	args := []any{}
+	if p.File != "" {
+		testQ += " AND path LIKE ?"
+		args = append(args, p.File+"%")
+	}
+	testQ += " ORDER BY path LIMIT ?"
+	args = append(args, g.limit)
+	testRows, err := g.db.QueryContext(ctx, testQ, args...)
+	if err != nil {
+		return "", fmt.Errorf("failed to query test files: %w", err)
+	}
+	defer testRows.Close()
+
+	var testFiles []string
+	for testRows.Next() {
+		var path string
+		if err := testRows.Scan(&path); err != nil {
+			return "", fmt.Errorf("failed to scan test file: %w", err)
+		}
+		testFiles = append(testFiles, path)
+	}
+
+	// For each test file, find the functions it calls in other files.
+	var out []testMapEntry
+	for _, tf := range testFiles {
+		entry := testMapEntry{TestFile: tf}
+		// Get test functions in this file.
+		funcQ := `SELECT name FROM nodes WHERE file_path = ? AND kind IN ('function','method') ORDER BY start_line`
+		funcRows, err := g.db.QueryContext(ctx, funcQ, tf)
+		if err != nil {
+			continue
+		}
+		for funcRows.Next() {
+			var name string
+			if err := funcRows.Scan(&name); err != nil {
+				continue
+			}
+			entry.TestFuncs = append(entry.TestFuncs, name)
+		}
+		funcRows.Close()
+
+		// Find source files this test file calls into.
+		srcQ := `SELECT DISTINCT n2.file_path FROM edges e
+		         JOIN nodes n1 ON e.source = n1.id
+		         JOIN nodes n2 ON e.target = n2.id
+		         WHERE n1.file_path = ? AND n2.file_path != ? AND e.kind = 'calls'
+		         AND n2.file_path NOT LIKE '%_test.go' AND n2.file_path NOT LIKE '%_test.py'
+		         ORDER BY n2.file_path`
+		srcRows, err := g.db.QueryContext(ctx, srcQ, tf, tf)
+		if err != nil {
+			continue
+		}
+		for srcRows.Next() {
+			var path string
+			if err := srcRows.Scan(&path); err != nil {
+				continue
+			}
+			entry.Sources = append(entry.Sources, path)
+		}
+		srcRows.Close()
+
+		if len(entry.TestFuncs) > 0 {
+			out = append(out, entry)
+		}
+	}
+	return tokensaveJSON(out)
+}
+
+type depsEntry struct {
+	File   string   `json:"file"`
+	Uses   []string `json:"uses"`   // files this file depends on
+	UsedBy []string `json:"used_by"` // files that depend on this file
+}
+
+func (g *tokensaveGraph) deps(ctx context.Context, p *TokensaveParams) (string, error) {
+	if p.File == "" {
+		return "", fmt.Errorf("file is required for deps")
+	}
+	// Files that p.File uses (outgoing edges to different files).
+	outQ := `SELECT DISTINCT n2.file_path FROM edges e
+	         JOIN nodes n1 ON e.source = n1.id
+	         JOIN nodes n2 ON e.target = n2.id
+	         WHERE n1.file_path = ? AND n2.file_path != ? AND e.kind IN ('calls','uses')
+	         ORDER BY n2.file_path`
+	rows, err := g.db.QueryContext(ctx, outQ, p.File, p.File)
+	if err != nil {
+		return "", fmt.Errorf("failed to query deps: %w", err)
+	}
+	defer rows.Close()
+	entry := depsEntry{File: p.File}
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		entry.Uses = append(entry.Uses, path)
+	}
+	rows.Close()
+
+	// Files that depend on p.File (incoming edges from different files).
+	inQ := `SELECT DISTINCT n1.file_path FROM edges e
+	        JOIN nodes n1 ON e.source = n1.id
+	        JOIN nodes n2 ON e.target = n2.id
+	        WHERE n2.file_path = ? AND n1.file_path != ? AND e.kind IN ('calls','uses')
+	        ORDER BY n1.file_path`
+	rows2, err := g.db.QueryContext(ctx, inQ, p.File, p.File)
+	if err != nil {
+		return "", fmt.Errorf("failed to query dependents: %w", err)
+	}
+	defer rows2.Close()
+	for rows2.Next() {
+		var path string
+		if err := rows2.Scan(&path); err != nil {
+			continue
+		}
+		entry.UsedBy = append(entry.UsedBy, path)
+	}
+	return tokensaveJSON(entry)
 }
 
 func tokensaveValidOp(op string) bool {

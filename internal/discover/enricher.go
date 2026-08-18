@@ -18,6 +18,28 @@ type Enricher interface {
 	EnrichModels(ctx context.Context, cfg Config, resolver Resolver, models []catwalk.Model) ([]catwalk.Model, error)
 }
 
+// fallbackEnricher is an enricher that runs when no provider-specific
+// enricher is registered. Typically used for static model metadata
+// lookups (modelspec) that apply across provider types.
+// Written once during init(); read concurrently thereafter.
+var fallbackEnricher Enricher
+
+// RegisterFallbackEnricher registers an enricher that runs when no
+// provider-specific enricher matches. Only one fallback can be active;
+// subsequent calls overwrite the previous one.
+func RegisterFallbackEnricher(e Enricher) {
+	fallbackEnricher = e
+}
+
+// GetEnricherWithFallback returns the enricher for the given provider
+// type, or the fallback enricher if no provider-specific one exists.
+func GetEnricherWithFallback(providerType string) Enricher {
+	if e := enrichers[providerType]; e != nil {
+		return e
+	}
+	return fallbackEnricher
+}
+
 // enrichers maps provider type strings to their enrichment
 // implementations. Each enricher self-registers via init() so that
 // adding a new provider requires only a new file — no changes to

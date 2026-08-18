@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"charm.land/catwalk/pkg/catwalk"
 	"github.com/charmbracelet/crush/internal/agent/hyper"
@@ -129,8 +130,6 @@ func Load(workingDir, dataDir string, debug bool) (*ConfigStore, error) {
 	// like AWS_PROFILE are visible to the AWS SDK credential chain.
 	cfg.applyEnv(valueResolver)
 
-	cfg.resolveEmbeddings(valueResolver)
-
 	if err := cfg.configureProviders(context.Background(), store, env, valueResolver, store.knownProviders); err != nil {
 		return nil, fmt.Errorf("failed to configure providers: %w", err)
 	}
@@ -212,21 +211,20 @@ func PushPopCrushEnv() func() {
 }
 
 func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env env.Env, resolver VariableResolver, knownProviders []catwalk.Provider) error {
+	knownProviderNames := make(map[string]bool)
 	restore := PushPopCrushEnv()
 	defer restore()
 
 	// When disable_default_providers is enabled, skip all default/embedded
 	// providers entirely. Users must fully specify any providers they want.
 	// We skip to the custom provider validation loop which handles all
-	// user-configured providers uniformly. knownProviderNameSet mirrors
-	// this policy so the interactive discovery reload agrees with load on
-	// which providers count as custom.
-	knownProviderNames := knownProviderNameSet(knownProviders, c.Options.DisableDefaultProviders)
+	// user-configured providers uniformly.
 	if c.Options.DisableDefaultProviders {
 		knownProviders = nil
 	}
 
 	for _, p := range knownProviders {
+		knownProviderNames[string(p.ID)] = true
 		config, configExists := c.Providers.Get(string(p.ID))
 		// if the user configured a known provider we need to allow it to override a couple of parameters
 		if configExists {
@@ -384,27 +382,50 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 	// Discover models concurrently for custom providers that need it.
 	// A provider needs discovery when discover_models is explicitly true,
 	// or when the models list is empty (auto-trigger, unless opted out).
-	// The same helper backs the interactive reload; see discovery.go.
-	//
-	// Record each custom provider's user-configured models first, before
-	// discovery merges endpoint models into the live config: the reload
-	// seeds re-discovery from this set so endpoint-removed models get
-	// pruned while user-specified ones survive.
-	store.userConfiguredModels = make(map[string][]catwalk.Model)
-	store.failedDiscoveryProviders = make(map[string]ProviderConfig)
-	candidates := maps.Collect(c.Providers.Seq2())
-	for id, pc := range candidates {
+	type discoveryResult struct {
+		models []catwalk.Model
+		err    error
+	}
+
+	discoveryResults := make(map[string]discoveryResult)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	discoverCtx, discoverCancel := context.WithTimeout(ctx, 3*time.Second)
+	for id, pc := range c.Providers.Seq2() {
 		if knownProviderNames[id] {
 			continue
 		}
-		store.userConfiguredModels[id] = slices.Clone(pc.Models)
+		if pc.Disable || pc.BaseURL == "" {
+			continue
+		}
+		wantsDiscovery := pc.AutoDiscoverModels != nil && *pc.AutoDiscoverModels
+		autoTrigger := len(pc.Models) == 0 && (pc.AutoDiscoverModels == nil || *pc.AutoDiscoverModels)
+		if !wantsDiscovery && !autoTrigger {
+			continue
+		}
+		providerID := cmp.Or(pc.ID, id)
+		cfg := discover.Config{
+			ID:             providerID,
+			BaseURL:        pc.BaseURL,
+			APIKey:         pc.APIKey,
+			ExtraHeaders:   pc.ExtraHeaders,
+			ExistingModels: pc.Models,
+		}
+		providerType := cmp.Or(pc.Type, catwalk.TypeOpenAICompat)
+		wg.Go(func() {
+			models, err := discover.DiscoverModels(discoverCtx, cfg, resolver)
+			if err == nil && len(models) > 0 {
+				if enricher := discover.GetEnricherWithFallback(string(providerType)); enricher != nil {
+					models, _ = enricher.EnrichModels(discoverCtx, cfg, resolver, models)
+				}
+			}
+			mu.Lock()
+			discoveryResults[id] = discoveryResult{models: models, err: err}
+			mu.Unlock()
+		})
 	}
-
-	// Per-provider errors are logged by the helper; providers that fail
-	// with no user models to fall back on are recorded below so the
-	// interactive reload can retry them.
-	discoverCtx, discoverCancel := context.WithTimeout(ctx, loadModelDiscoveryTimeout)
-	discoveryResults, _ := discoverProviderModels(discoverCtx, candidates, knownProviderNames, resolver)
+	wg.Wait()
 	discoverCancel()
 
 	// Validate the custom providers.
@@ -431,6 +452,36 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 			c.Providers.Del(id)
 			continue
 		}
+		if providerConfig.APIKey == "" {
+			slog.Warn("Provider is missing API key, this might be OK for local providers", "provider", id)
+		}
+		if providerConfig.BaseURL == "" {
+			slog.Warn("Skipping custom provider due to missing API endpoint", "provider", id)
+			c.Providers.Del(id)
+			continue
+		}
+
+		// Apply discovery results if available.
+		if result, ok := discoveryResults[id]; ok {
+			if result.err != nil {
+				slog.Warn("Model discovery failed", "provider", id, "error", result.err)
+				if len(providerConfig.Models) == 0 {
+					slog.Warn("Skipping provider with no models after failed discovery", "provider", id)
+					c.Providers.Del(id)
+					continue
+				}
+			} else if len(result.models) > 0 {
+				providerConfig.Models = result.models
+				slog.Info("Discovered models for provider", "provider", id, "count", len(result.models))
+			}
+		}
+
+		if len(providerConfig.Models) == 0 {
+			slog.Warn("Skipping custom provider because the provider has no models", "provider", id)
+			c.Providers.Del(id)
+			continue
+		}
+
 		apiKey, err := resolver.ResolveValue(providerConfig.APIKey)
 		if apiKey == "" || err != nil {
 			slog.Warn("Provider is missing API key, this might be OK for local providers", "provider", id)
@@ -438,28 +489,6 @@ func (c *Config) configureProviders(ctx context.Context, store *ConfigStore, env
 		baseURL, err := resolver.ResolveValue(providerConfig.BaseURL)
 		if baseURL == "" || err != nil {
 			slog.Warn("Skipping custom provider due to missing API endpoint", "provider", id, "error", err)
-			c.Providers.Del(id)
-			continue
-		}
-
-		// Apply discovery results if available. discoverProviderModels
-		// returns entries only for providers whose discovery succeeded;
-		// failures (and empty results) fall through to the no-models
-		// check below, which drops the provider when it has no
-		// user-specified models to fall back on.
-		if models, ok := discoveryResults[id]; ok && len(models) > 0 {
-			providerConfig.Models = models
-			slog.Info("Discovered models for provider", "provider", id, "count", len(models))
-		}
-
-		if len(providerConfig.Models) == 0 {
-			// Remember discovery-eligible providers dropped here so an
-			// interactive reload can resurrect them once their endpoint
-			// comes up (e.g. Crush started before Ollama was running).
-			if providerWantsDiscovery(providerConfig, store.userConfiguredModels[id]) {
-				store.failedDiscoveryProviders[id] = providerConfig
-			}
-			slog.Warn("Skipping custom provider because the provider has no models", "provider", id)
 			c.Providers.Del(id)
 			continue
 		}
@@ -504,49 +533,6 @@ func (c *Config) applyEnv(resolver VariableResolver) {
 			continue
 		}
 		os.Setenv(k, resolved)
-	}
-}
-
-// resolveEmbeddings shell-expands the credential-bearing embedding fields
-// in place so $VAR and $(command) templates in api_key and base_url behave
-// like every other credential field in the config.
-//
-// A field that fails to resolve is cleared rather than left holding its
-// unexpanded template: keeping it would send the literal "$EMB_KEY" as the
-// bearer token (or as the base URL) to the embeddings endpoint, which fails
-// far away from the config mistake that caused it. Clearing lets
-// ResolvedEmbeddings reapply the documented defaults instead.
-//
-// @joestump-agent 08/25/2026 - Initial implementation.
-//
-// @joestump 08/25/2026 - Stopped logging the resolution error for api_key.
-// resolveError renders the pre-expansion template, which is the secret
-// itself when the user wrote a literal key, so the failure path wrote the
-// key to the crush log in clear text (CodeQL go/clear-text-logging, high).
-// The error is still logged for base_url, matching how configureProviders
-// treats API keys versus endpoints. Also clear failed fields, see above.
-func (c *Config) resolveEmbeddings(resolver VariableResolver) {
-	if c.Embeddings == nil {
-		return
-	}
-
-	if v := c.Embeddings.APIKey; v != "" {
-		resolved, err := resolver.ResolveValue(v)
-		if err != nil {
-			// No "error" attribute: it embeds the unresolved template.
-			slog.Warn("Ignoring embeddings API key that failed to resolve.")
-			resolved = ""
-		}
-		c.Embeddings.APIKey = resolved
-	}
-
-	if v := c.Embeddings.BaseURL; v != "" {
-		resolved, err := resolver.ResolveValue(v)
-		if err != nil {
-			slog.Warn("Ignoring embeddings base URL that failed to resolve.", "error", err)
-			resolved = ""
-		}
-		c.Embeddings.BaseURL = resolved
 	}
 }
 
@@ -1163,7 +1149,7 @@ func migrateDisableNotifications() {
 			if !gjson.Get(string(data), "options.notifications").Exists() {
 				updated, err := sjson.Set(string(data), "options.notifications", migratedValue)
 				if err == nil {
-					if err := AtomicWriteFile(dataConfig, []byte(updated), 0o600); err != nil {
+					if err := atomicWriteFile(dataConfig, []byte(updated), 0o600); err != nil {
 						slog.Warn("Failed to migrate to notifications field", "error", err)
 					} else {
 						slog.Info("Migrated notification settings to notifications field", "value", migratedValue)
@@ -1185,7 +1171,7 @@ func migrateDisableNotifications() {
 		if updated == string(data) {
 			continue
 		}
-		if err := AtomicWriteFile(path, []byte(updated), 0o600); err != nil {
+		if err := atomicWriteFile(path, []byte(updated), 0o600); err != nil {
 			slog.Warn("Failed to write migrated config", "path", path, "error", err)
 		}
 	}
