@@ -225,3 +225,8 @@ require (
 )
 
 replace github.com/Gentleman-Programming/engram => /Users/mac/data/oss/engram
+
+// Local fork adding an idle/stall watchdog to the OpenAI Responses API
+// stream (responsesLanguageModel.Stream) so a tool-call turn whose upstream
+// never emits a terminal event cannot hang the agent forever.
+replace charm.land/fantasy => /Users/mac/data/oss/fantasy
