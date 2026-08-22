@@ -470,6 +470,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	ta.DynamicHeight = true
 	ta.MinHeight = TextareaMinHeight
 	ta.MaxHeight = TextareaMaxHeight
+<<<<<<< HEAD
 	// "home"/"end" are the terminal sequences emitted by fn+left/fn+right
 	// on macOS; keep them so those keys work. "ctrl+a" is bound to
 	// select-all by crush, so line start stays on fn+left only.
@@ -503,6 +504,19 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	ta.KeyMap.SelectAll = key.NewBinding(
 		key.WithKeys("ctrl+a"),
 		key.WithHelp("ctrl+a", "select all"),
+||||||| parent of 08552fb91 (feat: textarea selection (#3507))
+=======
+	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
+	// for help, so bind select-all to "ctrl+a" instead (line-start remains
+	// available via "home").
+	ta.KeyMap.LineStart = key.NewBinding(
+		key.WithKeys("home"),
+		key.WithHelp("home", "line start"),
+	)
+	ta.KeyMap.SelectAll = key.NewBinding(
+		key.WithKeys("ctrl+shift+a"),
+		key.WithHelp("ctrl+shift+a", "select all"),
+>>>>>>> 08552fb91 (feat: textarea selection (#3507))
 	)
 	// Copying is handled by crush's keymap (Editor.CopySelection) so it can
 	// use crush's clipboard backend and user feedback; disable the
@@ -3051,10 +3065,14 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					))
 					m.textarea.DeleteSelection()
 				}
+<<<<<<< HEAD
 			case key.Matches(msg, m.keyMap.Editor.HelpDialog):
 				if cmd := m.openEditorHelpDialog(); cmd != nil {
 					cmds = append(cmds, cmd)
 				}
+||||||| parent of 08552fb91 (feat: textarea selection (#3507))
+=======
+>>>>>>> 08552fb91 (feat: textarea selection (#3507))
 			case key.Matches(msg, m.keyMap.Editor.HistoryPrev):
 				cmd := m.handleHistoryUp(msg)
 				if cmd != nil {
@@ -3835,7 +3853,11 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Editor.SelectAll,
 				k.Editor.CopySelection,
 				k.Editor.CutSelection,
+<<<<<<< HEAD
 				k.Editor.HelpDialog,
+||||||| parent of 08552fb91 (feat: textarea selection (#3507))
+=======
+>>>>>>> 08552fb91 (feat: textarea selection (#3507))
 			}
 			// AddImage (ctrl+f) opens the file picker, which now accepts text
 			// files on any model, so its hint always shows. Only the clipboard
@@ -3909,7 +3931,11 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Editor.SelectAll,
 				k.Editor.CopySelection,
 				k.Editor.CutSelection,
+<<<<<<< HEAD
 				k.Editor.HelpDialog,
+||||||| parent of 08552fb91 (feat: textarea selection (#3507))
+=======
+>>>>>>> 08552fb91 (feat: textarea selection (#3507))
 			}
 			// AddImage (ctrl+f) opens the file picker, which now accepts text
 			// files on any model, so its hint always shows. Only the clipboard
