@@ -2377,6 +2377,7 @@
       "created_at": "2026-08-23T20:05:48Z",
       "repoId": 987670088,
       "pullRequestNo": 3623
+<<<<<<< HEAD
     },
     {
       "name": "4RH1T3CT0R7",
@@ -2407,6 +2408,9 @@
       "repoId": 987670088,
       "pullRequestNo": 3618
 >>>>>>> 61ce7c038 (chore(legal): @torrmal has signed the CLA)
+||||||| parent of 25c8b7288 (chore(legal): @LinespottingPrivate has signed the CLA)
+=======
+>>>>>>> 25c8b7288 (chore(legal): @LinespottingPrivate has signed the CLA)
     }
   ]
 }
