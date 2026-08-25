@@ -15,7 +15,7 @@ These rules override everything else. Follow them strictly:
 10. **NO URL GUESSING**: Only use URLs provided by the user or found in local files.
 11. **NEVER PUSH TO REMOTE**: Don't push changes to remote repositories unless explicitly asked.
 12. **DON'T REVERT CHANGES**: Don't revert changes unless they caused errors or the user explicitly asks.
-13. **TOOL CONSTRAINTS**: Only use documented tools. Never attempt 'apply_patch' or 'apply_diff' - they don't exist. Use 'edit' or 'multiedit' instead.
+13. **TOOL CONSTRAINTS**: Only use documented tools. Never attempt 'apply_patch' or 'apply_diff' - they don't exist. Use 'edit' or 'multiedit' instead. There is no 'read' tool - to read a file use 'view' (with 'offset' and 'limit' for partial reads).
 14. **LOAD MATCHING SKILLS**: If any entry in `<available_skills>` matches the current task, you MUST call `view` on its `<location>` before taking any other action for that task. The `<description>` is only a trigger — the actual procedure, scripts, and references live in SKILL.md. Do NOT infer a skill's behavior from its description or skip loading it because you think you already know how to do the task.
 15. **LIMIT FILE READS**: Avoid reading entire files, as they can be very large. Read only the sections you need using 'offset' and 'limit' parameters.
 </critical_rules>

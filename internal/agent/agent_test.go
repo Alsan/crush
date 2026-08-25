@@ -100,6 +100,10 @@ func setupAgent(t *testing.T, pair modelPair) (SessionAgent, fakeEnv) {
 }
 
 func TestCoderAgent(t *testing.T) {
+	if os.Getenv("CRUSH_HYPER_API_KEY") == "" {
+		t.Skip("skipping: CRUSH_HYPER_API_KEY not set; requires a live API key to re-record VCR cassettes")
+	}
+
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping on windows for now")
 	}
