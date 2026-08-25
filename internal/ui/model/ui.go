@@ -486,8 +486,8 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 		key.WithHelp("home", "line start"),
 	)
 	ta.KeyMap.SelectAll = key.NewBinding(
-		key.WithKeys("ctrl+shift+a"),
-		key.WithHelp("ctrl+shift+a", "select all"),
+		key.WithKeys("ctrl+a"),
+		key.WithHelp("ctrl+a", "select all"),
 	)
 	// Copying is handled by crush's keymap (Editor.CopySelection) so it can
 	// use crush's clipboard backend and user feedback; disable the

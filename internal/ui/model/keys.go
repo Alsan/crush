@@ -202,8 +202,8 @@ func DefaultKeyMap() KeyMap {
 		key.WithHelp("ctrl+shift+x", "cut selection"),
 	)
 	km.Editor.SelectAll = key.NewBinding(
-		key.WithKeys("ctrl+shift+a"),
-		key.WithHelp("ctrl+shift+a", "select all"),
+		key.WithKeys("ctrl+a"),
+		key.WithHelp("ctrl+a", "select all"),
 	)
 
 	km.Chat.NewSession = key.NewBinding(
