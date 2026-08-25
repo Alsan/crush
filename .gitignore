@@ -63,3 +63,4 @@ completions/crush.*sh
 *.gate.lock*
 .codegraph/daemon.pid
 .codegraph/codegraph.lock
+CHANGELOG.md
