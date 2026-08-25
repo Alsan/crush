@@ -10,7 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newEditorHelpTestUI() *UI {
+func newEditorHelpTestUI(t *testing.T) *UI {
+	t.Helper()
 	u := newTestUI()
 	u.dialog = dialog.NewOverlay()
 	sty := u.com.Styles.Attachments
@@ -28,48 +29,41 @@ func newEditorHelpTestUI() *UI {
 func TestEditorHelp_CtrlSlashOpensDialog(t *testing.T) {
 	t.Parallel()
 
-	u := newEditorHelpTestUI()
+	u := newEditorHelpTestUI(t)
 
 	_, _ = u.Update(tea.KeyPressMsg{Code: '/', Mod: tea.ModCtrl})
 
 	require.True(t, u.dialog.ContainsDialog(dialog.EditorHelpID), "ctrl+/ must open the editor help dialog")
 }
 
-// TestEditorHelp_ReopenBringToFront pins that pressing ctrl+/ twice keeps a
-// single dialog instance rather than stacking duplicates.
-func TestEditorHelp_ReopenBringToFront(t *testing.T) {
+// TestEditorHelp_ReopenDoesNotStack pins that pressing ctrl+/ twice keeps a
+// single dialog instance: closing once removes it entirely,
+// rather than leaving a duplicate behind.
+func TestEditorHelp_ReopenDoesNotStack(t *testing.T) {
 	t.Parallel()
 
-	u := newEditorHelpTestUI()
+	u := newEditorHelpTestUI(t)
 
 	for range 2 {
 		_, _ = u.Update(tea.KeyPressMsg{Code: '/', Mod: tea.ModCtrl})
 	}
 	require.True(t, u.dialog.ContainsDialog(dialog.EditorHelpID))
+
+	u.dialog.CloseDialog(dialog.EditorHelpID)
+	require.False(t, u.dialog.ContainsDialog(dialog.EditorHelpID),
+		"a single close must remove all help dialog instances")
 }
 
-// TestEditorHelp_EscapeClosesDialog pins that esc dismisses the help dialog.
-// The UI-level esc path re-focuses the textarea and touches attachment
-// state, so close semantics are asserted at the dialog layer instead
-// (see internal/ui/dialog/editor_help_test.go).
-func TestEditorHelp_EscapeClosesDialog(t *testing.T) {
-	t.Parallel()
-
-	e := dialog.NewEditorHelp(newEditorHelpTestUI().com, []dialog.HelpSection{
-		{Title: "Test", Rows: []dialog.HelpRow{{Keys: "ctrl+a", Desc: "Select all"}}},
-	})
-	action := e.HandleMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
-	require.IsType(t, dialog.ActionClose{}, action, "esc must close the editor help dialog")
-}
-
-// TestEditorHelp_BareSlashDoesNotOpenDialog pins that the plain '/' key
-// belongs to commands, not the editor help dialog.
-func TestEditorHelp_BareSlashDoesNotOpenDialog(t *testing.T) {
+// TestEditorHelp_SlashKeyIsolation pins that ctrl+/ belongs to the editor
+// help dialog while bare '/' stays with the commands binding.
+func TestEditorHelp_SlashKeyIsolation(t *testing.T) {
 	t.Parallel()
 
 	km := DefaultKeyMap()
-	help := key.Matches(tea.KeyPressMsg{Code: '/', Mod: tea.ModCtrl}, km.Editor.HelpDialog)
-	plain := key.Matches(tea.KeyPressMsg{Code: '/'}, km.Editor.HelpDialog)
-	require.True(t, help, "ctrl+/ must match HelpDialog")
-	require.False(t, plain, "bare / must not match HelpDialog")
+	ctrl := key.Matches(tea.KeyPressMsg{Code: '/', Mod: tea.ModCtrl}, km.Editor.HelpDialog)
+	plainHelp := key.Matches(tea.KeyPressMsg{Code: '/'}, km.Editor.HelpDialog)
+	plainCommands := key.Matches(tea.KeyPressMsg{Code: '/'}, km.Editor.Commands)
+	require.True(t, ctrl, "ctrl+/ must match HelpDialog")
+	require.False(t, plainHelp, "bare / must not match HelpDialog")
+	require.True(t, plainCommands, "bare / must match Commands")
 }
