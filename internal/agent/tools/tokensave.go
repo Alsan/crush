@@ -669,7 +669,7 @@ func (g *tokensaveGraph) testMap(ctx context.Context, p *TokensaveParams) (strin
 
 type depsEntry struct {
 	File   string   `json:"file"`
-	Uses   []string `json:"uses"`   // files this file depends on
+	Uses   []string `json:"uses"`    // files this file depends on
 	UsedBy []string `json:"used_by"` // files that depend on this file
 }
 

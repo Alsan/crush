@@ -26,11 +26,11 @@ func TestModelspecEnricher_DeepSeekModels(t *testing.T) {
 		ctx int64
 		max int64
 	}{
-		"deepseek-v4-flash": {1_048_576, 131_072},
-		"deepseek-v4-pro":   {1_048_576, 131_072},
+		"deepseek-v4-flash":  {1_048_576, 131_072},
+		"deepseek-v4-pro":    {1_048_576, 131_072},
 		"deepseek-v3.2-chat": {131_072, 16_384},
-		"deepseek-r1-0528":  {131_072, 16_384},
-		"deepseek-chat":     {131_072, 16_384},
+		"deepseek-r1-0528":   {131_072, 16_384},
+		"deepseek-chat":      {131_072, 16_384},
 	}
 
 	for _, m := range result {
