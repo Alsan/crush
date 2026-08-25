@@ -70,6 +70,7 @@ type bashDescriptionData struct {
 	ModelID         string
 	RgAvailable     bool
 	GhAvailable     bool
+	RtkAvailable    bool
 }
 
 var bannedCommands = []string{
@@ -189,6 +190,7 @@ func bashDescription(attribution *config.Attribution, modelID string, allowedCom
 		ModelID:         modelID,
 		RgAvailable:     getRg() != "",
 		GhAvailable:     ghAvailable,
+		RtkAvailable:    getRtk() != "",
 	}); err != nil {
 		// this should never happen.
 		panic("failed to execute bash description template: " + err.Error())

@@ -141,6 +141,15 @@ func newBashToolWithRecordingPerms(workingDir string, allow bool) (fantasy.Agent
 	return NewBashTool(perms, workingDir, attribution, "test-model", nil, false), perms
 }
 
+func TestBashDescriptionRendersRtkHint(t *testing.T) {
+	attribution := &config.Attribution{TrailerStyle: config.TrailerStyleNone}
+	desc := bashDescription(attribution, "test-model")
+	// rtk is on this machine's PATH; the hint must render when available.
+	if getRtk() != "" && !strings.Contains(desc, "rtk") {
+		t.Fatal("expected rtk hint in bash description when rtk is available")
+	}
+}
+
 func TestBashTool_ChainedCommandsRequirePermission(t *testing.T) {
 	workingDir := t.TempDir()
 	tool, perms := newBashToolWithRecordingPerms(workingDir, true)

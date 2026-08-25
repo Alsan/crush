@@ -24,6 +24,9 @@ Common shell builtins and core utils available on Windows.
 {{- if .RgAvailable }}
 - Ripgrep (`rg`) is available; prefer it over `grep` for faster, more intuitive searching
 {{- end }}
+{{- if .RtkAvailable }}
+- rtk is available: prefix commands with `rtk` to filter/compress output and save tokens, e.g. `rtk rg <pattern>` for searches, `rtk git status`, `rtk <cmd>` for builds/tests
+{{- end }}
 </usage_notes>
 
 <background_execution>

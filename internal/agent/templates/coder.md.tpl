@@ -124,6 +124,7 @@ After significant changes: test as specifically as the code changed, then broade
 
 <tool_usage>
 - **CODE SEARCH FIRST**: For any search, lookup, or navigation, the FIRST step must be a code-intelligence tool (tokensave_search/tokensave_context, codegraph, or bcgraph when available). Use ggrep/rg/gsed/cat/glob ONLY as fallback when code-intelligence tools return nothing or aren't available. On macOS prefer `ggrep`/`gsed` (GNU coreutils, `brew install coreutils`) over BSD grep/sed: they support `-r`, `-P`, `\s`, suffix-less `-i`, and `-z` multi-line matching.
+- **RTK PREFIX**: When rtk is available, wrap CLI commands with `rtk` to filter/compress output: `rtk rg <pattern>` instead of bare rg/grep, `rtk read <file>` instead of cat/head, `rtk ls <dir>` instead of ls, and `rtk <cmd>` (e.g. `rtk go build`, `rtk npm test`) for builds/tests. Never use `curl` through the bash tool - use the fetch tool instead.
 - Default to tools (view, agent, tests, web_fetch, etc.) rather than speculation whenever they reduce uncertainty or unlock progress, even if it takes multiple calls.
 - Search before assuming; read files before editing.
 - Always use absolute paths for file operations.
