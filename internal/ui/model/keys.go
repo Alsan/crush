@@ -35,6 +35,9 @@ type KeyMap struct {
 		// PasteText pastes clipboard text into the textarea, as an
 		// alternative to bracketed paste.
 		PasteText key.Binding
+
+		// HelpDialog opens a dialog listing all editor keybindings.
+		HelpDialog key.Binding
 	}
 
 	Chat struct {
@@ -149,11 +152,8 @@ func DefaultKeyMap() KeyMap {
 		key.WithHelp("ctrl+o", "open editor"),
 	)
 	km.Editor.Newline = key.NewBinding(
-		key.WithKeys("shift+enter", "ctrl+j"),
-		// "ctrl+j" is a common keybinding for newline in many editors. If
-		// the terminal supports "shift+enter", we substitute the help tex
-		// to reflect that.
-		key.WithHelp("ctrl+j", "newline"),
+		key.WithKeys("shift+enter"),
+		key.WithHelp("shift+enter", "newline"),
 	)
 	km.Editor.AddImage = key.NewBinding(
 		key.WithKeys("ctrl+f"),
@@ -204,6 +204,10 @@ func DefaultKeyMap() KeyMap {
 	km.Editor.SelectAll = key.NewBinding(
 		key.WithKeys("ctrl+a"),
 		key.WithHelp("ctrl+a", "select all"),
+	)
+	km.Editor.HelpDialog = key.NewBinding(
+		key.WithKeys("ctrl+/"),
+		key.WithHelp("ctrl+/", "editor keys"),
 	)
 
 	km.Chat.NewSession = key.NewBinding(
