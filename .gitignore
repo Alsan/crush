@@ -62,3 +62,4 @@ completions/crush.*sh
 .beads/proxieddb/
 *.gate.lock*
 .codegraph/daemon.pid
+.codegraph/codegraph.lock
