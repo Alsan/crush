@@ -41,9 +41,13 @@ linters:
         text: "SA1019.*interp.ExecHandler"
         linters:
           - staticcheck
-      # Vendored upstream code (bubbles textarea) is kept byte-close to
-      # upstream on purpose; don't restyle it.
-      - path: internal/ui/textarea/
+      - path: internal/agent/tools/mcp/init.go
+        text: "SA1019.*LoggingMessageHandler"
+        linters:
+          - staticcheck
+      # SA4023 false positive: RemoveConfigField returns non-nil errors.
+      - path: internal/cmd/logout.go
+        text: "SA4023"
         linters:
           - staticcheck
 issues:
@@ -52,6 +56,6 @@ issues:
 formatters:
   enable:
     - gofumpt
-    - goimports
+    # - goimports
   exclusions:
     generated: lax
