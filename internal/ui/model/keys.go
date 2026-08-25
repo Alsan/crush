@@ -232,11 +232,11 @@ func DefaultKeyMap() KeyMap {
 	)
 
 	km.Chat.Down = key.NewBinding(
-		key.WithKeys("down", "ctrl+j", "j"),
+		key.WithKeys("down", "ctrl+j"),
 		key.WithHelp("↓", "down"),
 	)
 	km.Chat.Up = key.NewBinding(
-		key.WithKeys("up", "ctrl+k", "k"),
+		key.WithKeys("up", "ctrl+k"),
 		key.WithHelp("↑", "up"),
 	)
 	km.Chat.UpDown = key.NewBinding(
@@ -244,11 +244,11 @@ func DefaultKeyMap() KeyMap {
 		key.WithHelp("↑↓", "scroll"),
 	)
 	km.Chat.UpOneItem = key.NewBinding(
-		key.WithKeys("shift+up", "K"),
+		key.WithKeys("shift+up"),
 		key.WithHelp("shift+↑", "up one item"),
 	)
 	km.Chat.DownOneItem = key.NewBinding(
-		key.WithKeys("shift+down", "J"),
+		key.WithKeys("shift+down"),
 		key.WithHelp("shift+↓", "down one item"),
 	)
 	km.Chat.UpDownOneItem = key.NewBinding(
@@ -256,35 +256,33 @@ func DefaultKeyMap() KeyMap {
 		key.WithHelp("shift+↑↓", "scroll one item"),
 	)
 	km.Chat.HalfPageDown = key.NewBinding(
-		key.WithKeys("d"),
-		key.WithHelp("d", "half page down"),
+		key.WithKeys(),
 	)
 	km.Chat.PageDown = key.NewBinding(
-		key.WithKeys("pgdown", " ", "f"),
-		key.WithHelp("f/pgdn", "page down"),
+		key.WithKeys("pgdown", " "),
+		key.WithHelp("space/pgdn", "page down"),
 	)
 	km.Chat.PageUp = key.NewBinding(
-		key.WithKeys("pgup", "b"),
-		key.WithHelp("b/pgup", "page up"),
+		key.WithKeys("pgup"),
+		key.WithHelp("pgup", "page up"),
 	)
 	km.Chat.HalfPageUp = key.NewBinding(
-		key.WithKeys("u"),
-		key.WithHelp("u", "half page up"),
+		key.WithKeys(),
 	)
 	km.Chat.Home = key.NewBinding(
-		key.WithKeys("g", "home"),
-		key.WithHelp("g", "home"),
+		key.WithKeys("home"),
+		key.WithHelp("home", "home"),
 	)
 	km.Chat.End = key.NewBinding(
-		key.WithKeys("G", "end"),
-		key.WithHelp("G", "end"),
+		key.WithKeys("end"),
+		key.WithHelp("end", "end"),
 	)
 	km.Chat.EndFollow = key.NewBinding(
 		key.WithKeys("ctrl+end"),
 	)
 	km.Chat.Copy = key.NewBinding(
-		key.WithKeys("c", "y", "C", "Y"),
-		key.WithHelp("c/y", "copy"),
+		key.WithKeys("ctrl+c"),
+		key.WithHelp("ctrl+c", "copy"),
 	)
 	km.Chat.ClearHighlight = key.NewBinding(
 		key.WithKeys("esc", "alt+esc"),
@@ -295,20 +293,20 @@ func DefaultKeyMap() KeyMap {
 		key.WithHelp("space", "expand/collapse"),
 	)
 	km.Chat.ScrollLeft = key.NewBinding(
-		key.WithKeys("shift+left", "H"),
-		key.WithHelp("shift+←/H", "scroll left"),
+		key.WithKeys("shift+left"),
+		key.WithHelp("shift+←", "scroll left"),
 	)
 	km.Chat.ScrollRight = key.NewBinding(
-		key.WithKeys("shift+right", "L"),
-		key.WithHelp("shift+→/L", "scroll right"),
+		key.WithKeys("shift+right"),
+		key.WithHelp("shift+→", "scroll right"),
 	)
 	km.Chat.FocusSidebar = key.NewBinding(
-		key.WithKeys("l", "right"),
-		key.WithHelp("l/→", "focus sidebar"),
+		key.WithKeys("right"),
+		key.WithHelp("→", "focus sidebar"),
 	)
 	km.Chat.FocusChat = key.NewBinding(
-		key.WithKeys("h", "left"),
-		key.WithHelp("h/←", "focus chat"),
+		key.WithKeys("left"),
+		key.WithHelp("←", "focus chat"),
 	)
 	km.Initialize.Yes = key.NewBinding(
 		key.WithKeys("y", "Y"),
