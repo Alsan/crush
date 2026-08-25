@@ -396,13 +396,25 @@ func TestGetOrRenewClient_RestoresPromptsAndResources(t *testing.T) {
 		"reported counts must match the restored registries")
 }
 
+// testTransportWrapper is a second, test-local decorator. maybeStdioErr must
+// see through an arbitrary stack of them, not just the one wrapper that
+// happens to exist in createSession today.
+type testTransportWrapper struct {
+	mcp.Transport
+	inner mcp.Transport
+}
+
+func (t *testTransportWrapper) unwrapTransport() mcp.Transport { return t.inner }
+
 // TestMaybeStdioErr_UnwrapsChannelTransport pins that maybeStdioErr sees
-// through the channelTransport wrapper to the inner CommandTransport. Every
-// transport is wrapped in a channelTransport before Connect, so without
-// unwrapping the *mcp.CommandTransport type assertion always fails and stdio
-// startup errors report bare EOF. We assert both that the unwrap reaches the
-// command (the error is no longer bare EOF) and that the re-executed child's
-// stderr text surfaces in the joined error.
+// through the channelTransport wrapper to the inner CommandTransport.
+//
+// Every transport is wrapped in a channelTransport before Connect, so the
+// *mcp.CommandTransport assertion never matched and a failed stdio server (a
+// missing npx, node not on PATH) reported a bare EOF with the child's stderr
+// thrown away — the exact diagnostic stdioCheck exists to provide. We assert
+// both that the unwrap reaches the command (the error is no longer bare EOF)
+// and that the re-executed child's output surfaces in the joined error.
 func TestMaybeStdioErr_UnwrapsChannelTransport(t *testing.T) {
 	cmd := exec.CommandContext(t.Context(), "sh", "-c", "echo 'startup failed: bad config'; exit 3")
 	inner := &mcp.CommandTransport{Command: cmd}
@@ -410,125 +422,36 @@ func TestMaybeStdioErr_UnwrapsChannelTransport(t *testing.T) {
 
 	got := maybeStdioErr(io.EOF, wrapped)
 	require.Error(t, got)
-	require.NotEqual(t, io.EOF.Error(), got.Error(),
-		"a wrapped channel transport must still reach the inner CommandTransport, joining the re-check instead of returning bare EOF")
-	require.Contains(t, got.Error(), "startup failed: bad config",
-		"the re-executed child's stderr must surface in the error")
+	require.NotEqual(t, io.EOF, got, "the unwrap must reach the command transport")
+	require.ErrorContains(t, got, "startup failed: bad config",
+		"the re-executed child's output must surface in the error")
 }
 
-// TestMaybeStdioErr_UnwrapsEveryWrapper pins the diagnostics fix against the
-// ACTUAL wrapper stack createSession builds, not a hand-rolled single layer.
-// A new decorator added on top (the A2UI capability injector was the first)
-// must not hide the child's stderr behind a bare EOF — which is exactly what
-// happened when a2uiInitTransport was layered outside channelTransport and
-// the old single-level unwrap stopped matching.
+// TestMaybeStdioErr_UnwrapsEveryWrapper pins the unwrap against future
+// decorators: it must peel the whole stack, not a fixed number of layers.
 func TestMaybeStdioErr_UnwrapsEveryWrapper(t *testing.T) {
 	cmd := exec.CommandContext(t.Context(), "sh", "-c", "echo boom-diagnostic >&2; exit 3")
 	var transport mcp.Transport = &mcp.CommandTransport{Command: cmd}
-	// Same order as createSession: channel gate first, then A2UI.
 	transport = &channelTransport{inner: transport, name: "t", gate: newChannelGate()}
-	transport = &a2uiInitTransport{inner: transport}
+	transport = &testTransportWrapper{inner: transport}
 
 	got := maybeStdioErr(io.EOF, transport)
 	require.ErrorContains(t, got, "boom-diagnostic",
 		"stdio diagnostics must survive every transport decorator")
 }
 
-// TestNameLock_ConcurrentFirstUseReturnsOneMutex pins that the per-name
-// lifecycle lock is minted atomically: racing first-use callers must all
-// receive the same mutex, or the serialization the whole lifecycle relies
-// on silently degrades to per-caller locks.
-func TestNameLock_ConcurrentFirstUseReturnsOneMutex(t *testing.T) {
-	const name = "test-name-lock-race"
-	t.Cleanup(func() { delete(renewMus, name) })
+// TestStdioCheck_DoesNotDuplicateArgv0 pins the argv0 handling in the
+// diagnostic re-run. exec.Cmd.Args carries argv0 as its first element and
+// exec.CommandContext prepends Path as argv0 itself, so passing Args through
+// whole re-ran "sh sh -c ..." — and the error reported that malformed
+// command's failure instead of the child's real startup output.
+func TestStdioCheck_DoesNotDuplicateArgv0(t *testing.T) {
+	cmd := exec.CommandContext(t.Context(), "sh", "-c", "echo 'real startup error'; exit 3")
 
-	const n = 32
-	locks := make([]*sync.Mutex, n)
-	var wg sync.WaitGroup
-	start := make(chan struct{})
-	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			<-start
-			locks[i] = renewLock(name)
-		}()
-	}
-	close(start)
-	wg.Wait()
-
-	for i := 1; i < n; i++ {
-		require.Same(t, locks[0], locks[i], "all callers must share one lifecycle mutex")
-	}
-}
-
-// TestUpdateState_ErrorClearsResources pins that both StateError teardown
-// branches clear the resources and resource-template registries alongside
-// tools and prompts — a dead server must not keep advertising resources
-// (or templates) it can no longer serve.
-func TestUpdateState_ErrorClearsResources(t *testing.T) {
-	const name = "test-error-clears-resources"
-	t.Cleanup(func() {
-		sessions.Del(name)
-		allTools.Del(name)
-		allResources.Del(name)
-		allResourceTemplates.Del(name)
-		states.Del(name)
-	})
-
-	sess, _ := liveSession(t, "res_tool")
-	sessions.Set(name, sess)
-	allResources.Set(name, []*Resource{{Name: "doc"}})
-	allResourceTemplates.Set(name, []*ResourceTemplate{{Name: "tmpl"}})
-
-	updateState(name, StateError, errors.New("listing broke"), sess, Counts{})
-	_, ok := allResources.Get(name)
-	require.False(t, ok, "current-session error must clear the resources registry")
-	_, ok = allResourceTemplates.Get(name)
-	require.False(t, ok, "current-session error must clear the resource-template registry")
-
-	sess2, _ := liveSession(t, "res_tool2")
-	sessions.Set(name, sess2)
-	allResources.Set(name, []*Resource{{Name: "doc2"}})
-	allResourceTemplates.Set(name, []*ResourceTemplate{{Name: "tmpl2"}})
-
-	updateState(name, StateError, errors.New("connect broke"), nil, Counts{})
-	_, ok = allResources.Get(name)
-	require.False(t, ok, "no-session error must clear the resources registry")
-	_, ok = allResourceTemplates.Get(name)
-	require.False(t, ok, "no-session error must clear the resource-template registry")
-}
-
-// TestDisableSingle_ClearsResourceTemplates pins that disabling a server
-// removes its resource templates (alongside tools, prompts, and resources)
-// from the registries — a disabled server's templates must stop appearing
-// as @-completions.
-func TestDisableSingle_ClearsResourceTemplates(t *testing.T) {
-	const name = "test-disable-clears-templates"
-	t.Cleanup(func() {
-		sessions.Del(name)
-		allTools.Del(name)
-		allResources.Del(name)
-		allResourceTemplates.Del(name)
-		states.Del(name)
-	})
-
-	cfg := config.NewTestStore(&config.Config{MCP: config.MCPs{name: {Type: config.MCPStdio}}})
-
-	sess, sessCtx := liveSession(t, "tmpl_tool")
-	sessions.Set(name, sess)
-	allResources.Set(name, []*Resource{{Name: "doc"}})
-	allResourceTemplates.Set(name, []*ResourceTemplate{{Name: "tmpl", URITemplate: "x://{id}"}})
-
-	require.NoError(t, DisableSingle(cfg, name))
-
-	require.ErrorIs(t, sessCtx.Err(), context.Canceled, "disable must close the session")
-	_, ok := allResources.Get(name)
-	require.False(t, ok, "disable must clear the resources registry")
-	_, ok = allResourceTemplates.Get(name)
-	require.False(t, ok, "disable must clear the resource-template registry")
-
-	info, ok := GetState(name)
-	require.True(t, ok)
-	require.Equal(t, StateDisabled, info.State)
+	err := stdioCheck(cmd)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "real startup error",
+		"the re-run must execute the original command, not a duplicated argv0")
+	require.NotContains(t, err.Error(), "cannot execute binary file",
+		"a duplicated argv0 makes the shell try to exec itself as a script")
 }
