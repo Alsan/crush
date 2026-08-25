@@ -471,6 +471,7 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	ta.MinHeight = TextareaMinHeight
 	ta.MaxHeight = TextareaMaxHeight
 <<<<<<< HEAD
+<<<<<<< HEAD
 	// "home"/"end" are the terminal sequences emitted by fn+left/fn+right
 	// on macOS; keep them so those keys work. "ctrl+a" is bound to
 	// select-all by crush, so line start stays on fn+left only.
@@ -509,8 +510,16 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
 	// for help, so bind select-all to "ctrl+a" instead (line-start remains
 	// available via "home").
+||||||| parent of a0fe47b62 (fix: return to the start of the line (#3635))
+	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
+	// for help, so bind select-all to "ctrl+a" instead (line-start remains
+	// available via "home").
+=======
+	// Keep "ctrl+a" for line-start (the textarea default); bind select-all
+	// to "ctrl+shift+a" instead (line-start is also available via "home").
+>>>>>>> a0fe47b62 (fix: return to the start of the line (#3635))
 	ta.KeyMap.LineStart = key.NewBinding(
-		key.WithKeys("home"),
+		key.WithKeys("home", "ctrl+a"),
 		key.WithHelp("home", "line start"),
 	)
 	ta.KeyMap.SelectAll = key.NewBinding(
