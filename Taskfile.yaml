@@ -151,7 +151,7 @@ tasks:
     vars:
       LDFLAGS: '{{if .VERSION}}-ldflags="-X github.com/charmbracelet/crush/internal/version.Version={{.VERSION}}"{{end}}'
     cmds:
-      - git tag -d nightly || true
+      - git tag -d nightly 2>/dev/null || true
       - go install {{.LDFLAGS}} -v .
     sources:
       - ./**/*.go
@@ -218,7 +218,7 @@ tasks:
       - sh: 'gh run list --workflow snapshot.yml --commit $(git rev-parse HEAD) --status success --json conclusion -q ".[0].conclusion" | grep -q success'
         msg: "Snapshot build for this commit failed or not present"
     cmds:
-      - git tag -d nightly || true
+      - git tag -d nightly 2>/dev/null || true
       - git commit --allow-empty -m "{{.NEXT}}"
       - git tag --annotate --sign -m "{{.NEXT}}" {{.NEXT}} {{.CLI_ARGS}}
       - echo "Pushing {{.NEXT}}..."
