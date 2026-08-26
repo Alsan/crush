@@ -2,8 +2,13 @@ package backend
 
 import (
 	"context"
+<<<<<<< HEAD
 	"encoding/json"
 	"errors"
+||||||| parent of caea196de (fix(mcp): safely teardown partially initialized sessions)
+	"errors"
+=======
+>>>>>>> caea196de (fix(mcp): safely teardown partially initialized sessions)
 	"fmt"
 	"log/slog"
 
@@ -279,15 +284,15 @@ func (b *Backend) EnableDockerMCP(ctx context.Context, workspaceID string) error
 	}
 
 	if err := mcptools.InitializeSingle(ctx, config.DockerMCPName, ws.Cfg); err != nil {
-		disableErr := mcptools.DisableSingle(ws.Cfg, config.DockerMCPName)
+		mcptools.DisableSingle(ws.Cfg, config.DockerMCPName)
 		ws.Cfg.RemoveDockerMCPInMemory()
-		return fmt.Errorf("failed to start docker MCP: %w", errors.Join(err, disableErr))
+		return fmt.Errorf("failed to start docker MCP: %w", err)
 	}
 
 	if err := ws.Cfg.PersistDockerMCPConfig(mcpConfig); err != nil {
-		disableErr := mcptools.DisableSingle(ws.Cfg, config.DockerMCPName)
+		mcptools.DisableSingle(ws.Cfg, config.DockerMCPName)
 		ws.Cfg.RemoveDockerMCPInMemory()
-		return fmt.Errorf("docker MCP started but failed to persist configuration: %w", errors.Join(err, disableErr))
+		return fmt.Errorf("docker MCP started but failed to persist configuration: %w", err)
 	}
 
 	publishConfigChanged(ws)
@@ -302,9 +307,7 @@ func (b *Backend) DisableDockerMCP(workspaceID string) error {
 		return err
 	}
 
-	if err := mcptools.DisableSingle(ws.Cfg, config.DockerMCPName); err != nil {
-		return fmt.Errorf("failed to disable docker MCP: %w", err)
-	}
+	mcptools.DisableSingle(ws.Cfg, config.DockerMCPName)
 
 	if err := ws.Cfg.DisableDockerMCP(); err != nil {
 		return err

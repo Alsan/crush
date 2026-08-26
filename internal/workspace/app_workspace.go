@@ -601,24 +601,22 @@ func (w *AppWorkspace) EnableDockerMCP(ctx context.Context) error {
 	}
 
 	if err := mcptools.InitializeSingle(ctx, config.DockerMCPName, w.store); err != nil {
-		disableErr := mcptools.DisableSingle(w.store, config.DockerMCPName)
+		mcptools.DisableSingle(w.store, config.DockerMCPName)
 		w.store.RemoveDockerMCPInMemory()
-		return fmt.Errorf("failed to start docker MCP: %w", errors.Join(err, disableErr))
+		return fmt.Errorf("failed to start docker MCP: %w", err)
 	}
 
 	if err := w.store.PersistDockerMCPConfig(mcpConfig); err != nil {
-		disableErr := mcptools.DisableSingle(w.store, config.DockerMCPName)
+		mcptools.DisableSingle(w.store, config.DockerMCPName)
 		w.store.RemoveDockerMCPInMemory()
-		return fmt.Errorf("docker MCP started but failed to persist configuration: %w", errors.Join(err, disableErr))
+		return fmt.Errorf("docker MCP started but failed to persist configuration: %w", err)
 	}
 
 	return nil
 }
 
 func (w *AppWorkspace) DisableDockerMCP() error {
-	if err := mcptools.DisableSingle(w.store, config.DockerMCPName); err != nil {
-		return fmt.Errorf("failed to disable docker MCP: %w", err)
-	}
+	mcptools.DisableSingle(w.store, config.DockerMCPName)
 	return w.store.DisableDockerMCP()
 }
 

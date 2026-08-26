@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"syscall"
 	"slices"
 	"strings"
 	"sync"
@@ -256,6 +257,26 @@ func GetStates() map[string]ClientInfo {
 // GetState returns the state of a specific MCP client
 func GetState(name string) (ClientInfo, bool) {
 	return states.Get(name)
+}
+
+// isIgnorableCloseErr returns true for errors that are expected during MCP
+// session shutdown and can be safely suppressed.
+func isIgnorableCloseErr(err error) bool {
+	return err == nil ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, context.Canceled) ||
+		isKilledErr(err)
+}
+
+// isKilledErr returns true if the error is an exec.ExitError caused by
+// SIGKILL.
+func isKilledErr(err error) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	ws, ok := exitErr.Sys().(syscall.WaitStatus)
+	return ok && ws.Signaled() && ws.Signal() == syscall.SIGKILL
 }
 
 // Close closes all MCP clients. This should be called during application shutdown.
@@ -576,11 +597,10 @@ func connectAndRegister(ctx context.Context, cfg *config.ConfigStore, name strin
 	if err != nil {
 		slog.Error("Error listing resources", "error", err)
 		updateState(name, StateError, err, nil, Counts{})
-		session.Close()
-		return err
+		closeSession(name, session)
+		return nil, err
 	}
 
-	toolCount := updateTools(cfg, name, tools)
 	updatePrompts(name, prompts)
 	resourceCount := updateResources(name, resources)
 	sessions.Set(name, session)
@@ -598,14 +618,17 @@ func connectAndRegister(ctx context.Context, cfg *config.ConfigStore, name strin
 // config so it survives restarts.
 
 // DisableSingle disables and closes a single MCP client by name.
-func DisableSingle(cfg *config.ConfigStore, name string) error {
+func DisableSingle(cfg *config.ConfigStore, name string) {
 	// teardown bumps the generation, invalidating any in-flight connect, and
 	// the StateDisabled transition clears the recorded config so a later
 	// re-enable (even with an unchanged config) is seen as new and restarts.
 	teardown(name)
 	updateState(name, StateDisabled, nil, nil, Counts{})
-	slog.Info("Disabled mcp client", "name", name)
-	return nil
+	// Clear tools, prompts, and resources for this MCP.
+	updateTools(cfg, name, nil)
+	updatePrompts(name, nil)
+	updateResources(name, nil)
+	slog.Info("Disabled MCP client", "name", name)
 }
 
 // goInitClient launches initClient in a goroutine with panic recovery.
