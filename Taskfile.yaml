@@ -153,6 +153,7 @@ tasks:
     cmds:
       - git tag -d nightly 2>/dev/null || true
       - go install {{.LDFLAGS}} -v .
+      - git tag -f nightly
     sources:
       - ./**/*.go
       - go.mod
