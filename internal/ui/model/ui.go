@@ -470,34 +470,11 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	ta.DynamicHeight = true
 	ta.MinHeight = TextareaMinHeight
 	ta.MaxHeight = TextareaMaxHeight
-<<<<<<< HEAD
-<<<<<<< HEAD
-	// Keep "ctrl+a" for line-start (the textarea default); bind select-all
-	// to "ctrl+shift+a" instead (line-start is also available via "home").
-	ta.KeyMap.LineStart = key.NewBinding(
-		key.WithKeys("home", "ctrl+a"),
-||||||| parent of 3f04051d7 (feat: textarea selection (#3507))
-=======
-	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
-	// for help, so bind select-all to "ctrl+a" instead (line-start remains
-	// available via "home").
-||||||| parent of c479f30a6 (feat: add ctrl+/ editor keys help dialog)
-	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
-	// for help, so bind select-all to "ctrl+a" instead (line-start remains
-	// available via "home").
-=======
 	// "home"/"end" are the terminal sequences emitted by fn+left/fn+right
 	// on macOS; keep them so those keys work. "ctrl+a" is bound to
 	// select-all by crush, so line start stays on fn+left only.
->>>>>>> c479f30a6 (feat: add ctrl+/ editor keys help dialog)
 	ta.KeyMap.LineStart = key.NewBinding(
 		key.WithKeys("home"),
-<<<<<<< HEAD
->>>>>>> 3f04051d7 (feat: textarea selection (#3507))
-		key.WithHelp("home", "line start"),
-||||||| parent of c479f30a6 (feat: add ctrl+/ editor keys help dialog)
-		key.WithHelp("home", "line start"),
-=======
 		key.WithHelp("fn+left", "line start"),
 	)
 	ta.KeyMap.LineEnd = key.NewBinding(
@@ -522,7 +499,6 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	ta.KeyMap.DeleteWordForward = key.NewBinding(
 		key.WithKeys("ctrl+delete"),
 		key.WithHelp("ctrl+delete", "delete word forward"),
->>>>>>> c479f30a6 (feat: add ctrl+/ editor keys help dialog)
 	)
 	ta.KeyMap.SelectAll = key.NewBinding(
 		key.WithKeys("ctrl+a"),
