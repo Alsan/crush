@@ -1149,7 +1149,7 @@ func migrateDisableNotifications() {
 			if !gjson.Get(string(data), "options.notifications").Exists() {
 				updated, err := sjson.Set(string(data), "options.notifications", migratedValue)
 				if err == nil {
-					if err := atomicWriteFile(dataConfig, []byte(updated), 0o600); err != nil {
+					if err := AtomicWriteFile(dataConfig, []byte(updated), 0o600); err != nil {
 						slog.Warn("Failed to migrate to notifications field", "error", err)
 					} else {
 						slog.Info("Migrated notification settings to notifications field", "value", migratedValue)
@@ -1171,7 +1171,7 @@ func migrateDisableNotifications() {
 		if updated == string(data) {
 			continue
 		}
-		if err := atomicWriteFile(path, []byte(updated), 0o600); err != nil {
+		if err := AtomicWriteFile(path, []byte(updated), 0o600); err != nil {
 			slog.Warn("Failed to write migrated config", "path", path, "error", err)
 		}
 	}

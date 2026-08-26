@@ -2,13 +2,6 @@ package backend
 
 import (
 	"context"
-<<<<<<< HEAD
-	"encoding/json"
-	"errors"
-||||||| parent of caea196de (fix(mcp): safely teardown partially initialized sessions)
-	"errors"
-=======
->>>>>>> caea196de (fix(mcp): safely teardown partially initialized sessions)
 	"fmt"
 	"log/slog"
 

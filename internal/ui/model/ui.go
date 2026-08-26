@@ -470,43 +470,6 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	ta.DynamicHeight = true
 	ta.MinHeight = TextareaMinHeight
 	ta.MaxHeight = TextareaMaxHeight
-<<<<<<< HEAD
-<<<<<<< HEAD
-	// "home"/"end" are the terminal sequences emitted by fn+left/fn+right
-	// on macOS; keep them so those keys work. "ctrl+a" is bound to
-	// select-all by crush, so line start stays on fn+left only.
-	ta.KeyMap.LineStart = key.NewBinding(
-		key.WithKeys("home"),
-		key.WithHelp("fn+left", "line start"),
-	)
-	ta.KeyMap.LineEnd = key.NewBinding(
-		key.WithKeys("end"),
-		key.WithHelp("fn+right", "line end"),
-	)
-	// Word jumps: keep ctrl+left/right; drop the alt+left/right variants
-	// (alt is opt on macOS and unreachable in terminals).
-	ta.KeyMap.WordBackward = key.NewBinding(
-		key.WithKeys("ctrl+left"),
-		key.WithHelp("ctrl+left", "word backward"),
-	)
-	ta.KeyMap.WordForward = key.NewBinding(
-		key.WithKeys("ctrl+right"),
-		key.WithHelp("ctrl+right", "word forward"),
-	)
-	// Delete word: ctrl+backspace deletes backward, ctrl+delete forward.
-	ta.KeyMap.DeleteWordBackward = key.NewBinding(
-		key.WithKeys("ctrl+backspace"),
-		key.WithHelp("ctrl+backspace", "delete word backward"),
-	)
-	ta.KeyMap.DeleteWordForward = key.NewBinding(
-		key.WithKeys("ctrl+delete"),
-		key.WithHelp("ctrl+delete", "delete word forward"),
-	)
-	ta.KeyMap.SelectAll = key.NewBinding(
-		key.WithKeys("ctrl+a"),
-		key.WithHelp("ctrl+a", "select all"),
-||||||| parent of 08552fb91 (feat: textarea selection (#3507))
-=======
 	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
 	// for help, so bind select-all to "ctrl+a" instead (line-start remains
 	// available via "home").
@@ -517,7 +480,6 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 =======
 	// Keep "ctrl+a" for line-start (the textarea default); bind select-all
 	// to "ctrl+shift+a" instead (line-start is also available via "home").
->>>>>>> a0fe47b62 (fix: return to the start of the line (#3635))
 	ta.KeyMap.LineStart = key.NewBinding(
 		key.WithKeys("home", "ctrl+a"),
 		key.WithHelp("home", "line start"),
@@ -3074,14 +3036,6 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 					))
 					m.textarea.DeleteSelection()
 				}
-<<<<<<< HEAD
-			case key.Matches(msg, m.keyMap.Editor.HelpDialog):
-				if cmd := m.openEditorHelpDialog(); cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-||||||| parent of 08552fb91 (feat: textarea selection (#3507))
-=======
->>>>>>> 08552fb91 (feat: textarea selection (#3507))
 			case key.Matches(msg, m.keyMap.Editor.HistoryPrev):
 				cmd := m.handleHistoryUp(msg)
 				if cmd != nil {
@@ -3862,11 +3816,6 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Editor.SelectAll,
 				k.Editor.CopySelection,
 				k.Editor.CutSelection,
-<<<<<<< HEAD
-				k.Editor.HelpDialog,
-||||||| parent of 08552fb91 (feat: textarea selection (#3507))
-=======
->>>>>>> 08552fb91 (feat: textarea selection (#3507))
 			}
 			// AddImage (ctrl+f) opens the file picker, which now accepts text
 			// files on any model, so its hint always shows. Only the clipboard
@@ -3940,11 +3889,6 @@ func (m *UI) FullHelp() [][]key.Binding {
 				k.Editor.SelectAll,
 				k.Editor.CopySelection,
 				k.Editor.CutSelection,
-<<<<<<< HEAD
-				k.Editor.HelpDialog,
-||||||| parent of 08552fb91 (feat: textarea selection (#3507))
-=======
->>>>>>> 08552fb91 (feat: textarea selection (#3507))
 			}
 			// AddImage (ctrl+f) opens the file picker, which now accepts text
 			// files on any model, so its hint always shows. Only the clipboard
@@ -5927,16 +5871,10 @@ func (m *UI) openDialog(id string) tea.Cmd {
 		if cmd := m.openQuitDialog(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
-<<<<<<< HEAD
-	case dialog.SkillsID:
-		m.openSkillsDialog()
-||||||| parent of f347baf8a (feat: add ctrl+/ editor keys help dialog)
-=======
 	case dialog.EditorHelpID:
 		if cmd := m.openEditorHelpDialog(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
->>>>>>> f347baf8a (feat: add ctrl+/ editor keys help dialog)
 	default:
 		// Unknown dialog
 		break
