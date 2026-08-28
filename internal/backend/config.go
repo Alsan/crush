@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -379,9 +380,7 @@ func (b *Backend) MCPReconnect(ctx context.Context, workspaceID, name string) er
 	if err != nil {
 		return err
 	}
-	if err := mcptools.DisableSingle(ws.Cfg, name); err != nil {
-		return fmt.Errorf("failed to disconnect MCP %q: %w", name, err)
-	}
+	mcptools.DisableSingle(ws.Cfg, name)
 	if err := ws.Cfg.ReloadFromDisk(ctx); err != nil {
 		slog.Warn("Failed to reload config from disk before reconnecting MCP; using existing config", "name", name, "error", err)
 	} else {

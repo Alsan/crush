@@ -16,7 +16,7 @@ func newEditorHelpTestUI(t *testing.T) *UI {
 	u.dialog = dialog.NewOverlay()
 	sty := u.com.Styles.Attachments
 	u.attachments = attachments.New(
-		attachments.NewRenderer(sty.Normal, sty.Deleting, sty.Image, sty.Text, sty.Skill, sty.Remove),
+		attachments.NewRenderer(sty.Normal, sty.Deleting, sty.Image, sty.Text, sty.Skill, sty.Remove, sty.Remove),
 		attachments.Keymap{},
 	)
 	u.keyMap = DefaultKeyMap()

@@ -621,9 +621,7 @@ func (w *AppWorkspace) DisableDockerMCP() error {
 }
 
 func (w *AppWorkspace) MCPReconnect(ctx context.Context, name string) error {
-	if err := mcptools.DisableSingle(w.store, name); err != nil {
-		return fmt.Errorf("failed to disconnect MCP %q: %w", name, err)
-	}
+	mcptools.DisableSingle(w.store, name)
 	if err := w.store.ReloadFromDisk(ctx); err != nil {
 		slog.Warn("Failed to reload config from disk before reconnecting MCP; using existing config", "name", name, "error", err)
 	}

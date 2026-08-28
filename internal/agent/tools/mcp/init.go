@@ -189,6 +189,9 @@ type Event struct {
 	// ChannelMessage is set only for EventChannelMessage: the fully rendered
 	// and escaped <channel>...</channel> element to inject into the session.
 	ChannelMessage string
+	// ChannelMeta carries the payload's meta attributes so workspace-side
+	// channel routing (reply routing, sender/group targeting) can act on them.
+	ChannelMeta map[string]string
 }
 
 // Counts number of available tools, prompts, etc.
@@ -207,6 +210,12 @@ type ClientInfo struct {
 	Counts      Counts
 	ConnectedAt time.Time
 
+	// Channel is true when this server is a channel source (pushes
+	// chat-like notifications).
+	Channel bool
+	// A2UITools lists the tool names that produce A2UI surfaces.
+	A2UITools []string
+
 	// Config is the configuration the server last successfully connected
 	// with. Reconcile compares it against the live config to decide whether
 	// a connected server needs a restart. It is recorded by updateState on
@@ -221,6 +230,17 @@ type ClientInfo struct {
 	// server skipped as "starting" and never restarted for the new config.
 	PendingConfig *config.MCPConfig
 }
+
+// ServesA2UITool reports whether the given tool name is served by this server as an A2UI tool.
+func (c *ClientInfo) ServesA2UITool(toolName string) bool {
+	for _, t := range c.A2UITools {
+		if t == toolName {
+			return true
+		}
+	}
+	return false
+}
+
 
 // SubscribeEvents returns a channel for MCP events.
 //

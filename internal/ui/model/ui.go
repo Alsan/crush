@@ -473,26 +473,15 @@ func New(com *common.Common, initialSessionID string, continueLast bool) *UI {
 	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
 	// for help, so bind select-all to "ctrl+a" instead (line-start remains
 	// available via "home").
-||||||| parent of a0fe47b62 (fix: return to the start of the line (#3635))
-	// "ctrl+a" is bound to line-start in the textarea; crush uses "ctrl+g"
-	// for help, so bind select-all to "ctrl+a" instead (line-start remains
-	// available via "home").
-=======
 	// Keep "ctrl+a" for line-start (the textarea default); bind select-all
 	// to "ctrl+shift+a" instead (line-start is also available via "home").
 	ta.KeyMap.LineStart = key.NewBinding(
 		key.WithKeys("home", "ctrl+a"),
 		key.WithHelp("home", "line start"),
 	)
-	ta.KeyMap.SelectAll = key.NewBinding(
-		key.WithKeys("ctrl+shift+a"),
-		key.WithHelp("ctrl+shift+a", "select all"),
->>>>>>> 08552fb91 (feat: textarea selection (#3507))
-	)
 	// Copying is handled by crush's keymap (Editor.CopySelection) so it can
 	// use crush's clipboard backend and user feedback; disable the
 	// textarea's built-in copy binding.
-	ta.KeyMap.CopySelection = key.NewBinding()
 	ta.Focus()
 
 	promptHL := newPromptHighlighter(
@@ -1336,8 +1325,7 @@ func (m *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// End any in-progress textarea mouse selection.
 		if m.textareaMouseSelecting {
-			m.textareaMouseSelecting = false
-			if handled, cmd := m.forwardMouseToTextarea(msg); handled {
+				if handled, cmd := m.forwardMouseToTextarea(msg); handled {
 				cmds = append(cmds, cmd)
 			}
 			return m, tea.Batch(cmds...)
@@ -2862,7 +2850,7 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 	// streaming run or hand focus back to the editor. It must run before
 	// the main-agent cancel check below so Sidekick activity can never
 	// trigger — or be blocked by — the main agent's busy state.
-	if key.Matches(msg, m.keyMap.Chat.Cancel) && m.sidekickPaneFocused() {
+	if key.Matches(msg, m.keyMap.Chat.Stop) && m.sidekickPaneFocused() {
 		if cmd := m.handleSidekickEscape(); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -2872,6 +2860,14 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 	// Handle stop key (ctrl+esc) when agent is busy: cancel immediately.
 	if key.Matches(msg, m.keyMap.Chat.Stop) && m.isAgentBusy() {
 	if cmd := m.cancelAgent(); cmd != nil {
+		}
+		return tea.Batch(cmds...)
+	}
+
+	// Ctrl+/ opens the editor keybinding help dialog.
+	if key.Matches(msg, m.keyMap.Editor.HelpDialog) {
+		if cmd := m.openEditorHelpDialog(); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 		return tea.Batch(cmds...)
 	}
@@ -3018,24 +3014,8 @@ func (m *UI) handleKeyPressMsg(msg tea.KeyPressMsg) tea.Cmd {
 				m.textarea.InsertRune('\n')
 				m.closeCompletions()
 				cmds = append(cmds, m.updateTextareaWithPrevHeight(msg, prevHeight))
-			case key.Matches(msg, m.keyMap.Editor.CopySelection):
-				if m.textarea.HasSelection() {
-					cmds = append(cmds, common.CopyToClipboardWithCallback(
-						m.textarea.SelectedText(),
-						"Selection copied to clipboard",
-						nil,
-					))
-					m.textarea.ClearSelection()
-				}
-			case key.Matches(msg, m.keyMap.Editor.CutSelection):
-				if m.textarea.HasSelection() {
-					cmds = append(cmds, common.CopyToClipboardWithCallback(
-						m.textarea.SelectedText(),
-						"Selection cut to clipboard",
-						nil,
-					))
-					m.textarea.DeleteSelection()
-				}
+
+
 			case key.Matches(msg, m.keyMap.Editor.HistoryPrev):
 				cmd := m.handleHistoryUp(msg)
 				if cmd != nil {
@@ -4056,18 +4036,10 @@ func (m *UI) forwardMouseToTextarea(msg tea.MouseMsg) (bool, tea.Cmd) {
 		if rel.Button != uv.MouseLeft {
 			return false, nil
 		}
-		m.textareaMouseSelecting = true
-		m.textarea.BeginSelection(rel.X, rel.Y)
 		return true, nil
 	case tea.MouseMotionMsg:
-		if !m.textareaMouseSelecting {
-			return true, nil
-		}
-		m.textarea.ExtendSelection(rel.X, rel.Y)
 		return true, nil
 	case tea.MouseReleaseMsg:
-		m.textarea.EndSelection()
-		m.textareaMouseSelecting = false
 		return true, nil
 	default:
 		return false, nil

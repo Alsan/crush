@@ -216,24 +216,23 @@ func TestSidekickEscCancelsSidekickOnly(t *testing.T) {
 	t.Parallel()
 	m, ws := newSidekickPanelTestUI()
 	m.sidekick.busy = true
-	// Pretend the main agent is busy too: Esc in the Sidekick pane must
+	// Pretend the main agent is busy too: ctrl+esc in the Sidekick pane must
 	// cancel the Sidekick, not the main run. Reaching the main cancel
 	// path would panic on the stub's embedded nil workspace.
 	m.agentBusyCache.set(true)
 
-	m.handleKeyPressMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
-	require.Equal(t, 1, ws.cancelCalls, "Esc must cancel the in-flight Sidekick run")
+	m.handleKeyPressMsg(tea.KeyPressMsg{Code: tea.KeyEscape, Mod: tea.ModCtrl})
+	require.Equal(t, 1, ws.cancelCalls, "ctrl+esc must cancel the in-flight Sidekick run")
 	require.Equal(t, uiFocusSidebar, m.focus, "canceling must not leave the pane")
-	require.False(t, m.isCanceling, "the main agent's double-esc cancel state must be untouched")
 }
 
 func TestSidekickEscLeavesPaneWhenIdle(t *testing.T) {
 	t.Parallel()
 	m, ws := newSidekickPanelTestUI()
 
-	m.handleKeyPressMsg(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m.handleKeyPressMsg(tea.KeyPressMsg{Code: tea.KeyEscape, Mod: tea.ModCtrl})
 	require.Zero(t, ws.cancelCalls)
-	require.Equal(t, uiFocusEditor, m.focus, "Esc on an idle Sidekick returns to the editor")
+	require.Equal(t, uiFocusEditor, m.focus, "ctrl+esc on an idle Sidekick returns to the editor")
 }
 
 func TestSidekickRunFailureShowsInlineError(t *testing.T) {

@@ -236,6 +236,14 @@ type MCPConfig struct {
 	// OAuthToken is the persisted OAuth token for this server. It is
 	// managed internally and stored in the global data config.
 	OAuthToken *oauth.Token `json:"oauth_token,omitempty" jsonschema:"-"`
+
+	// ChannelEnabled marks this server as a channel source. Channel
+	// servers push chat-like notifications that are rendered inline and
+	// can be replied to via the workspace channel API.
+	ChannelEnabled bool `json:"channel_enabled,omitempty" jsonschema:"description=Enable channel mode for this MCP server,default=false"`
+
+	// ChannelReply configures reply routing for channel messages.
+	ChannelReply *MCPChannelReply `json:"channel_reply,omitempty" jsonschema:"description=Channel reply routing configuration"`
 }
 
 // isOrphanedToken reports whether this entry is a leftover OAuth token
@@ -342,7 +350,74 @@ type Options struct {
 	Progress                  *bool        `json:"progress,omitempty" jsonschema:"description=Show indeterminate progress updates during long operations,default=true"`
 	Notifications             string       `json:"notifications,omitempty" jsonschema:"description=Notification style to use. Options: auto (default)\\, native\\, osc\\, bell\\, disabled. Auto selects based on environment: native for local sessions\\, osc for SSH (with automatic OSC 99/777 detection).,enum=auto,enum=native,enum=osc,enum=bell,enum=disabled,default=auto"`
 	DisabledSkills            []string     `json:"disabled_skills,omitempty" jsonschema:"description=List of skill names to disable and hide from the agent,example=crush-config"`
+	DisableA2UI               bool         `json:"disable_a2ui,omitempty" jsonschema:"description=Disable A2UI rendering for this project,default=false"`
+	AllowedCommands           []string     `json:"allowed_commands,omitempty" jsonschema:"description=List of bash commands allowed without prompting"`
+	AllowAllCommands          bool         `json:"allow_all_commands,omitempty" jsonschema:"description=Allow all bash commands without prompting,default=false"`
 }
+
+
+// EmbeddingsConfig holds configuration for semantic search embeddings.
+type EmbeddingsConfig struct {
+	BaseURL  string `json:"base_url,omitempty"`
+	APIKey   string `json:"api_key,omitempty"`
+	Model    string `json:"model,omitempty"`
+	Dimension int   `json:"dimension,omitempty"`
+}
+
+// ResolvedEmbeddings returns the resolved embedding configuration, or false if not configured.
+func (c *Config) ResolvedEmbeddings() (EmbeddingsConfig, bool) {
+	if c.Embeddings == nil {
+		return EmbeddingsConfig{}, false
+	}
+	e := *c.Embeddings
+	if e.BaseURL == "" {
+		e.BaseURL = "https://api.openai.com/v1"
+	}
+	if e.Model == "" {
+		e.Model = "text-embedding-3-small"
+	}
+	if e.Dimension == 0 {
+		e.Dimension = 768
+	}
+	return e, true
+}
+
+// resolveEmbeddings expands shell variables in the embeddings config.
+func (c *Config) resolveEmbeddings(resolver VariableResolver) {
+	if c.Embeddings == nil {
+		return
+	}
+	if v, err := resolver.ResolveValue(c.Embeddings.BaseURL); err != nil {
+		c.Embeddings.BaseURL = ""
+	} else {
+		c.Embeddings.BaseURL = v
+	}
+	if v, err := resolver.ResolveValue(c.Embeddings.APIKey); err != nil {
+		c.Embeddings.APIKey = ""
+	} else {
+		c.Embeddings.APIKey = v
+	}
+}
+
+
+// MCPChannelReply configures reply routing for channel messages.
+type MCPChannelReply struct {
+	Enabled       bool                   `json:"enabled,omitempty"`
+	MessageParam  string                 `json:"message_param,omitempty"`
+	Group         *MCPChannelReplyRoute  `json:"group,omitempty"`
+	User          *MCPChannelReplyRoute  `json:"user,omitempty"`
+	SuppressTools []string               `json:"suppress_tools,omitempty"`
+}
+
+// MCPChannelReplyRoute defines a routing rule for channel replies.
+type MCPChannelReplyRoute struct {
+	Tool        string `json:"tool,omitempty"`
+	TargetParam string `json:"target_param,omitempty"`
+	TargetMeta  string `json:"target_meta,omitempty"`
+}
+
+// AgentSidekick is the agent name for the sidekick feature.
+const AgentSidekick = "sidekick"
 
 type MCPs map[string]MCPConfig
 
@@ -662,6 +737,8 @@ type Config struct {
 	LSP LSPs `json:"lsp,omitempty" jsonschema:"description=Language Server Protocol configurations"`
 
 	Options *Options `json:"options,omitempty" jsonschema:"description=General application options"`
+
+	Embeddings *EmbeddingsConfig `json:"embeddings,omitempty" jsonschema:"description=Semantic search embedding configuration"`
 
 	Permissions *Permissions `json:"permissions,omitempty" jsonschema:"description=Permission settings for tool usage"`
 

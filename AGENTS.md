@@ -13,6 +13,11 @@ Crush is a terminal-based AI coding assistant built in Go by
 | `task fmt` | 格式化 (`gofumpt -w .`) |
 | `task modernize` | 代码简化 |
 | `task dev` | 开发模式（带 profiling） |
+
+## 文件读取优先级
+
+**禁止 `cat`/`head`/`tail`/`less`/`more` 读代码文件**（hook 拦截）。
+优先级：`tokensave_read` → `rtk read` → `view`（仅未索引文件/图片）。
 | `go test ./... -update` | 更新 golden files |
 
 ## On-Demand Reference
